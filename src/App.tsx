@@ -7,7 +7,9 @@ import {
   roleLabel,
   saveProfile,
   setCategoryAccess,
+  setCategoryRoles,
   setChannelAccess,
+  setChannelRoles,
 } from './community';
 import { useAuth } from './hooks/useAuth';
 import { useCommunity, useRoomsPresence } from './hooks/useCommunity';
@@ -35,7 +37,7 @@ export default function App() {
 }
 
 function Community({ uid }: { uid: string }) {
-  const data = useCommunity();
+  const data = useCommunity(uid);
   const toast = useToast();
   const dialogs = useDialogs();
   const role = data.roles[uid] || 'member';
@@ -77,11 +79,8 @@ function Community({ uid }: { uid: string }) {
   const [capture, setCapture] = useState(loadCaptureSettings);
 
   const allowedChannels = useMemo(
-    () =>
-      Object.keys(data.channels).filter((id) =>
-        channelAllowed(id, data.channels[id], role, data.channelAccess, data.categoryAccess),
-      ),
-    [data.channels, data.channelAccess, data.categoryAccess, role],
+    () => Object.keys(data.channels).filter((id) => channelAllowed(id, uid, data)),
+    [data, uid],
   );
   const presence = useRoomsPresence(data.loaded ? allowedChannels : []);
   const nameOf = useCallback(
@@ -264,15 +263,29 @@ function Community({ uid }: { uid: string }) {
         <PermissionModal
           key={permission.kind + permission.id}
           title={(permission.kind === 'category' ? 'Categoria ' : 'Canal ') + permissionName}
+          kind={permission.kind}
           current={permissionLevel}
           allowOwner={role === 'owner'}
+          roleDefs={data.roleDefs}
+          selectedRoles={
+            (permission.kind === 'category' ? data.categoryRoles : data.channelRoles)[permission.id] || []
+          }
+          canEditRoles={role === 'owner'}
           onClose={() => setPermission(null)}
           onSave={async (level) => {
             try {
               if (permission.kind === 'category') await setCategoryAccess(permission.id, level);
               else await setChannelAccess(permission.id, level);
               toast.success('Permissão atualizada');
-              setPermission(null);
+            } catch (e) {
+              toast.error(e);
+            }
+          }}
+          onSaveRoles={async (roleIds) => {
+            try {
+              if (permission.kind === 'category') await setCategoryRoles(permission.id, roleIds);
+              else await setChannelRoles(permission.id, roleIds);
+              toast.success('Cargos atualizados');
             } catch (e) {
               toast.error(e);
             }

@@ -1,8 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Check, FolderPlus, LoaderCircle, Pencil, Plus, Settings, Trash2, UserX, X } from 'lucide-react';
+import { Check, FolderPlus, LoaderCircle, Pencil, Plus, Settings, Tag, Trash2, UserX, X } from 'lucide-react';
 import {
   approveMember,
   assignRole,
+  createRole,
+  deleteRole,
+  setMemberRole,
+  updateRole,
+  ROLE_COLORS,
   createCategory,
   deleteCategory,
   deleteChannel,
@@ -22,7 +27,7 @@ import type { CommunityData } from '../hooks/useCommunity';
 import { useDialogs } from '../ui/Modal';
 import { useToast } from '../ui/Toast';
 
-type Tab = 'members' | 'requests' | 'channels';
+type Tab = 'members' | 'requests' | 'roles' | 'channels';
 const nameRule = (v: string) =>
   v.trim().length < 2 || v.trim().length > 32 ? 'Use de 2 a 32 caracteres.' : '';
 
@@ -72,8 +77,13 @@ export function AdminPanel({
   const tabs: Array<[Tab, string, number?]> = [
     ...(owner ? ([['requests', 'Solicitações', pending.length]] as Array<[Tab, string, number]>) : []),
     ['members', 'Membros'],
+    ...(owner ? ([['roles', 'Cargos']] as Array<[Tab, string]>) : []),
     ['channels', 'Canais'],
   ];
+  const roleEntries = Object.entries(data.roleDefs).sort((a, b) => a[1].createdAt - b[1].createdAt);
+  const nextColor = ROLE_COLORS[roleEntries.length % ROLE_COLORS.length];
+  const roleNameRule = (v: string) =>
+    v.trim().length < 2 || v.trim().length > 24 ? 'Use de 2 a 24 caracteres.' : '';
 
   return (
     <section className="admin">
@@ -148,11 +158,41 @@ export function AdminPanel({
                     {id === uid && <span className="muted"> (você)</span>}
                   </strong>
                   <small className="muted">{roleLabel[role]}</small>
+                  {roleEntries.length > 0 && (owner || data.memberRoles[id]) && (
+                    <div className="role-chips">
+                      {roleEntries
+                        .filter(([roleId]) => owner || data.memberRoles[id]?.[roleId])
+                        .map(([roleId, def]) => {
+                          const on = Boolean(data.memberRoles[id]?.[roleId]);
+                          return (
+                            <button
+                              key={roleId}
+                              className={'role-chip' + (on ? ' on' : '')}
+                              style={{ '--role': def.color } as React.CSSProperties}
+                              disabled={!owner || busy !== ''}
+                              aria-pressed={on}
+                              title={owner ? (on ? 'Tirar cargo' : 'Dar cargo') : undefined}
+                              onClick={() =>
+                                void run(
+                                  'mrole:' + id,
+                                  () => setMemberRole(id, roleId, !on),
+                                  on ? `${def.name} removido de ${name}` : `${name} agora é ${def.name}`,
+                                )
+                              }
+                            >
+                              <span className="role-dot" />
+                              {def.name}
+                            </button>
+                          );
+                        })}
+                    </div>
+                  )}
                 </div>
                 {owner && id !== uid && (
                   <>
                     <select
-                      aria-label={'Cargo de ' + name}
+                      aria-label={'Nível de ' + name}
+                      title="Nível de administração"
                       value={role}
                       disabled={busy !== ''}
                       onChange={(e) =>
@@ -185,6 +225,93 @@ export function AdminPanel({
                     </button>
                   </>
                 )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {tab === 'roles' && (
+        <div className="admin-list">
+          <p className="muted">
+            Cargos funcionam como grupos de amigos. Marque-os na engrenagem de uma categoria ou canal: só quem
+            tiver um dos cargos marcados vê aquela parte da comunidade. Administradores veem tudo.
+          </p>
+          <button
+            className="button ghost align-start"
+            onClick={async () => {
+              const name = await dialogs.prompt({
+                title: 'Novo cargo',
+                label: 'Nome (ex.: Faculdade, Trampo)',
+                validate: roleNameRule,
+                confirmLabel: 'Criar',
+              });
+              if (name) await run('newrole', () => createRole(name, nextColor), 'Cargo criado');
+            }}
+          >
+            <Tag size={16} /> Novo cargo
+          </button>
+          {roleEntries.length === 0 && <p className="empty muted">Nenhum cargo criado ainda.</p>}
+          {roleEntries.map(([roleId, def]) => {
+            const count = Object.values(data.memberRoles).filter((r) => r[roleId]).length;
+            const nextIndex = (ROLE_COLORS.indexOf(def.color) + 1) % ROLE_COLORS.length;
+            return (
+              <div className="admin-row" key={roleId}>
+                <button
+                  className="role-swatch"
+                  style={{ background: def.color }}
+                  title="Trocar cor"
+                  aria-label={'Trocar cor de ' + def.name}
+                  disabled={busy !== ''}
+                  onClick={() =>
+                    void run(
+                      'color',
+                      () => updateRole(roleId, { color: ROLE_COLORS[nextIndex] }),
+                      'Cor atualizada',
+                    )
+                  }
+                />
+                <div className="admin-row-text">
+                  <strong style={{ color: def.color }}>{def.name}</strong>
+                  <small className="muted">{count === 1 ? '1 pessoa' : `${count} pessoas`}</small>
+                </div>
+                <button
+                  className="icon-button tiny"
+                  title="Renomear"
+                  aria-label={'Renomear ' + def.name}
+                  onClick={async () => {
+                    const name = await dialogs.prompt({
+                      title: 'Renomear cargo',
+                      label: 'Nome',
+                      initial: def.name,
+                      validate: roleNameRule,
+                    });
+                    if (name) await run('rrole', () => updateRole(roleId, { name }), 'Cargo atualizado');
+                  }}
+                >
+                  <Pencil size={14} />
+                </button>
+                <button
+                  className="icon-button tiny danger"
+                  title="Excluir"
+                  aria-label={'Excluir ' + def.name}
+                  onClick={async () => {
+                    const ok = await dialogs.confirm({
+                      title: 'Excluir cargo?',
+                      message: `${def.name} sai de todas as pessoas, categorias e canais. Áreas que só esse cargo via passam a ser visíveis para todos.`,
+                      confirmLabel: 'Excluir',
+                      danger: true,
+                    });
+                    if (ok)
+                      await run(
+                        'drole',
+                        () => deleteRole(roleId, data.memberRoles, data.categoryRoles, data.channelRoles),
+                        'Cargo excluído',
+                      );
+                  }}
+                >
+                  <Trash2 size={14} />
+                </button>
               </div>
             );
           })}

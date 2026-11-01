@@ -10,7 +10,7 @@ import {
   Trash2,
   Video,
 } from 'lucide-react';
-import { channelAllowed, isStaff, type AccessLevel } from '../community';
+import { categoryAllowed, channelAllowed, isStaff, type AccessLevel } from '../community';
 import type { CommunityData, RoomPresence } from '../hooks/useCommunity';
 
 const COLLAPSE_KEY = 'nimbo.collapsed';
@@ -65,8 +65,19 @@ export function Sidebar({
     });
 
   const categories = Object.entries(data.categories).sort((a, b) => a[1].order - b[1].order);
-  const restrictedLabel = (level?: AccessLevel) =>
-    level === 'owner' ? 'Somente proprietário' : level === 'admin' ? 'Somente administradores' : '';
+  // Texto do cadeado (só a equipe vê itens restritos; os demais nem recebem esses dados).
+  const restrictedLabel = (level?: AccessLevel, roleIds?: string[]) =>
+    [
+      level === 'owner' ? 'Somente proprietário' : level === 'admin' ? 'Somente administradores' : '',
+      roleIds?.length ? 'Cargos: ' + roleIds.map((r) => data.roleDefs[r]?.name || 'removido').join(', ') : '',
+    ]
+      .filter(Boolean)
+      .join(' · ');
+  // Cor do primeiro cargo da pessoa, como no Discord.
+  const colorOf = (memberId: string) => {
+    const first = Object.keys(data.memberRoles[memberId] || {}).find((r) => data.roleDefs[r]);
+    return first ? data.roleDefs[first].color : undefined;
+  };
 
   return (
     <nav className="sidebar" aria-label="Comunidade">
@@ -89,9 +100,13 @@ export function Sidebar({
           const channels = Object.entries(data.channels).filter(
             ([, c]) => c.enabled && (c.categoryId || 'lives') === categoryId,
           );
-          if (!channels.length && !staff) return null;
+          const visibleChannels = channels.filter(([id]) => staff || channelAllowed(id, uid, data));
+          if (!staff && (!visibleChannels.length || !categoryAllowed(categoryId, uid, data))) return null;
           const isCollapsed = collapsed[categoryId];
-          const categoryRestriction = restrictedLabel(data.categoryAccess[categoryId]);
+          const categoryRestriction = restrictedLabel(
+            data.categoryAccess[categoryId],
+            data.categoryRoles[categoryId],
+          );
           return (
             <div className="category" key={categoryId}>
               <div className="category-row">
@@ -126,13 +141,13 @@ export function Sidebar({
                 )}
               </div>
               {!isCollapsed &&
-                channels.map(([id, channel]) => {
-                  const allowed = channelAllowed(id, channel, role, data.channelAccess, data.categoryAccess);
+                visibleChannels.map(([id, channel]) => {
+                  const allowed = channelAllowed(id, uid, data);
                   const here = (allowed && presence[id]) || { members: [], streams: {} };
                   const streams = here.streams;
                   const members = here.members.filter((m) => m === uid || data.profiles[m] || staff);
                   const liveCount = members.filter((m) => streams[m]).length;
-                  const restriction = restrictedLabel(data.channelAccess[id]);
+                  const restriction = restrictedLabel(data.channelAccess[id], data.channelRoles[id]);
                   return (
                     <div className="channel" key={id}>
                       <div
@@ -188,7 +203,9 @@ export function Sidebar({
                                   <span className="avatar small">
                                     {(name || '?').slice(0, 1).toUpperCase()}
                                   </span>
-                                  <span className="participant-name">{name || 'Sessão sem perfil'}</span>
+                                  <span className="participant-name" style={{ color: colorOf(memberId) }}>
+                                    {name || 'Sessão sem perfil'}
+                                  </span>
                                   {stream && (
                                     <span className="live-pill">
                                       {kinds.screen && <Radio size={10} />}

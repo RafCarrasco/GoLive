@@ -41,7 +41,19 @@ beforeEach(async () => {
         roles: { owner: 'owner', admin: 'admin', member: 'member' },
         profiles: { member: { displayName: 'Membro', createdAt: 1, updatedAt: 1 } },
         requests: { pending: { email: 'pending@example.com', createdAt: 1 } },
-        categories: { vipcat: { name: 'VIP', createdAt: 1, createdBy: 'owner', order: 1 } },
+        categories: {
+          vipcat: { name: 'VIP', createdAt: 1, createdBy: 'owner', order: 1 },
+          grupoA: { name: 'Faculdade', createdAt: 1, createdBy: 'owner', order: 2 },
+          grupoB: { name: 'Trampo', createdAt: 1, createdBy: 'owner', order: 3 },
+        },
+        categoryIds: { vipcat: 1, grupoA: 2, grupoB: 3 },
+        channelIds: { staff: true, vip: true, off: true, canalA: true, canalB: true },
+        roleDefs: {
+          faculdade: { name: 'Faculdade', color: '#7c6cff', createdAt: 1 },
+          trampo: { name: 'Trampo', color: '#3ecf8e', createdAt: 1 },
+        },
+        memberRoles: { member: { faculdade: true } },
+        categoryRoles: { grupoA: ['faculdade'], grupoB: ['trampo'] },
         channels: {
           staff: {
             name: 'Staff',
@@ -55,6 +67,24 @@ beforeEach(async () => {
             name: 'VIP',
             description: '',
             categoryId: 'vipcat',
+            createdBy: 'owner',
+            createdAt: 1,
+            visibility: 'public',
+            enabled: true,
+          },
+          canalA: {
+            name: 'A',
+            description: '',
+            categoryId: 'grupoA',
+            createdBy: 'owner',
+            createdAt: 1,
+            visibility: 'public',
+            enabled: true,
+          },
+          canalB: {
+            name: 'B',
+            description: '',
+            categoryId: 'grupoB',
             createdBy: 'owner',
             createdAt: 1,
             visibility: 'public',
@@ -299,5 +329,65 @@ describe('sinalização WebRTC', () => {
   test('destinatário limpa a própria caixa em lote', async () => {
     await assertFails(update(ref(member(), 'rooms/geral'), { 'signals/owner/member/m1': null }));
     await assertSucceeds(update(ref(owner(), 'rooms/geral'), { 'signals/owner/member/m1': null }));
+  });
+});
+
+describe('cargos personalizados (grupos)', () => {
+  test('o índice mostra só ids; nomes de categorias de outro grupo ficam ocultos', async () => {
+    await assertSucceeds(get(ref(member(), 'community/categoryIds')));
+    await assertSucceeds(get(ref(member(), 'community/categories/grupoA')));
+    await assertFails(get(ref(member(), 'community/categories/grupoB')));
+    await assertFails(get(ref(member(), 'community/categories')));
+  });
+  test('canais herdam o cargo da categoria', async () => {
+    await assertSucceeds(get(ref(member(), 'community/channels/canalA')));
+    await assertFails(get(ref(member(), 'community/channels/canalB')));
+    await assertSucceeds(get(ref(member(), 'rooms/canalA/members')));
+    await assertFails(get(ref(member(), 'rooms/canalB/members')));
+    await assertFails(set(ref(member(), 'rooms/canalB/members/member'), { joinedAt: 1 }));
+  });
+  test('canais sem cargo continuam visíveis para todos', async () => {
+    await assertSucceeds(get(ref(member(), 'rooms/geral/members')));
+  });
+  test('ganhar o cargo libera a categoria na hora', async () => {
+    await assertSucceeds(set(ref(owner(), 'community/memberRoles/member/trampo'), true));
+    await assertSucceeds(get(ref(member(), 'community/categories/grupoB')));
+    await assertSucceeds(get(ref(member(), 'rooms/canalB/members')));
+  });
+  test('canal pode exigir um cargo próprio dentro da categoria', async () => {
+    await env.withSecurityRulesDisabled((ctx) =>
+      set(ref(ctx.database(), 'community/channelRoles/canalA'), ['trampo']),
+    );
+    await assertSucceeds(get(ref(member(), 'community/categories/grupoA')));
+    await assertFails(get(ref(member(), 'community/channels/canalA')));
+    await assertFails(get(ref(member(), 'rooms/canalA/members')));
+  });
+  test('qualquer um dos cargos marcados libera', async () => {
+    await env.withSecurityRulesDisabled((ctx) =>
+      set(ref(ctx.database(), 'community/categoryRoles/grupoB'), ['outro', 'faculdade']),
+    );
+    await assertSucceeds(get(ref(member(), 'community/categories/grupoB')));
+  });
+  test('administradores e o proprietário veem tudo', async () => {
+    await assertSucceeds(get(ref(admin(), 'community/categories/grupoB')));
+    await assertSucceeds(get(ref(admin(), 'rooms/canalB/members')));
+    await assertSucceeds(get(ref(owner(), 'community/channels/canalA')));
+  });
+  test('somente o proprietário cria e atribui cargos', async () => {
+    const role = { name: 'Novo', color: '#ff0000', createdAt: 1 };
+    await assertFails(set(ref(member(), 'community/memberRoles/member/trampo'), true));
+    await assertFails(set(ref(admin(), 'community/memberRoles/member/trampo'), true));
+    await assertFails(set(ref(admin(), 'community/roleDefs/novo'), role));
+    await assertFails(set(ref(admin(), 'community/categoryRoles/grupoA'), ['trampo']));
+    await assertSucceeds(set(ref(owner(), 'community/roleDefs/novo'), role));
+    await assertSucceeds(set(ref(owner(), 'community/categoryRoles/grupoA'), ['trampo', 'novo']));
+  });
+  test('validação de cargos', async () => {
+    await assertFails(set(ref(owner(), 'community/roleDefs/x'), { name: 'X', color: 'roxo', createdAt: 1 }));
+    await assertFails(
+      set(ref(owner(), 'community/roleDefs/x'), { name: 'Ok', color: '#123456', createdAt: 1, admin: true }),
+    );
+    await assertFails(set(ref(owner(), 'community/categoryRoles/grupoA'), { 7: 'trampo' }));
+    await assertFails(set(ref(owner(), 'community/memberRoles/member/trampo'), 'sim'));
   });
 });

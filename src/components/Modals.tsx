@@ -1,7 +1,14 @@
 import { useState } from 'react';
 import { Check, LoaderCircle } from 'lucide-react';
 import { Modal } from '../ui/Modal';
-import { accessLabel, nicknameError, NICKNAME_MAX, type AccessLevel } from '../community';
+import {
+  accessLabel,
+  nicknameError,
+  NICKNAME_MAX,
+  ROLE_SLOTS,
+  type AccessLevel,
+  type RoleDef,
+} from '../community';
 import { supportsOwnAudioRestriction, type CaptureSettings } from '../live/capture';
 
 export function StreamSettingsModal({
@@ -112,47 +119,107 @@ export function StreamSettingsModal({
 
 export function PermissionModal({
   title,
+  kind,
   current,
   allowOwner,
+  roleDefs,
+  selectedRoles,
+  canEditRoles,
   onSave,
+  onSaveRoles,
   onClose,
 }: {
   title: string;
+  kind: 'category' | 'channel';
   current: AccessLevel;
   allowOwner: boolean;
+  roleDefs: Record<string, RoleDef>;
+  selectedRoles: string[];
+  canEditRoles: boolean;
   onSave: (level: AccessLevel) => Promise<void>;
+  onSaveRoles: (roleIds: string[]) => Promise<void>;
   onClose: () => void;
 }) {
-  const [saving, setSaving] = useState<AccessLevel | null>(null);
+  const [saving, setSaving] = useState<string | null>(null);
+  const roles = Object.entries(roleDefs).sort((a, b) => a[1].createdAt - b[1].createdAt);
+  const save = (key: string, action: Promise<void>) => {
+    setSaving(key);
+    void action.finally(() => setSaving(null));
+  };
   return (
-    <Modal title={title} kicker="QUEM PODE ENTRAR" size="sm" onClose={onClose}>
-      <div className="choice-list">
-        {(['member', 'admin', 'owner'] as AccessLevel[]).map((level) => {
-          const locked = !allowOwner && (level === 'owner' || current === 'owner');
-          return (
-            <button
-              key={level}
-              className={'choice' + (current === level ? ' on' : '')}
-              disabled={saving !== null || locked}
-              title={locked ? 'Somente o proprietário altera esta opção' : undefined}
-              onClick={() => {
-                setSaving(level);
-                void onSave(level).finally(() => setSaving(null));
-              }}
-            >
-              <span>{accessLabel[level]}</span>
-              {saving === level ? (
-                <LoaderCircle size={16} className="spin" />
-              ) : (
-                current === level && <Check size={16} />
-              )}
-            </button>
-          );
-        })}
+    <Modal title={title} kicker="QUEM PODE VER E ENTRAR" size="sm" onClose={onClose}>
+      <div className="option-group">
+        <span className="option-label">Nível mínimo</span>
+        <div className="choice-list">
+          {(['member', 'admin', 'owner'] as AccessLevel[]).map((level) => {
+            const locked = !allowOwner && (level === 'owner' || current === 'owner');
+            return (
+              <button
+                key={level}
+                className={'choice' + (current === level ? ' on' : '')}
+                disabled={saving !== null || locked}
+                title={locked ? 'Somente o proprietário altera esta opção' : undefined}
+                onClick={() => save(level, onSave(level))}
+              >
+                <span>{accessLabel[level]}</span>
+                {saving === level ? (
+                  <LoaderCircle size={16} className="spin" />
+                ) : (
+                  current === level && <Check size={16} />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="option-group">
+        <span className="option-label">Cargos com acesso</span>
+        {roles.length === 0 ? (
+          <small className="muted">
+            Crie cargos (grupos de amigos) em Gerenciar comunidade → Cargos para separar quem vê cada{' '}
+            {kind === 'category' ? 'categoria' : 'canal'}.
+          </small>
+        ) : (
+          <>
+            <div className="role-chips">
+              {roles.map(([roleId, def]) => {
+                const on = selectedRoles.includes(roleId);
+                const full = !on && selectedRoles.length >= ROLE_SLOTS;
+                return (
+                  <button
+                    key={roleId}
+                    className={'role-chip' + (on ? ' on' : '')}
+                    style={{ '--role': def.color } as React.CSSProperties}
+                    aria-pressed={on}
+                    disabled={!canEditRoles || saving !== null || full}
+                    title={full ? `No máximo ${ROLE_SLOTS} cargos` : undefined}
+                    onClick={() =>
+                      save(
+                        'roles',
+                        onSaveRoles(
+                          on ? selectedRoles.filter((r) => r !== roleId) : [...selectedRoles, roleId],
+                        ),
+                      )
+                    }
+                  >
+                    <span className="role-dot" />
+                    {def.name}
+                  </button>
+                );
+              })}
+            </div>
+            <small className="muted">
+              {selectedRoles.length
+                ? `Só quem tem um dos cargos marcados vê ${kind === 'category' ? 'esta categoria e os canais dela' : 'este canal'}. Os demais nem sabem que existe.`
+                : 'Nenhum cargo marcado: todos os membros veem.'}
+              {!canEditRoles && ' Somente o proprietário altera os cargos.'}
+            </small>
+          </>
+        )}
       </div>
       <small className="muted">
-        Canais seguem a restrição da categoria e podem ser ainda mais restritos. O acesso é verificado pelo
-        servidor.
+        Administradores veem tudo. Canais seguem a categoria e podem ser ainda mais restritos. O acesso é
+        verificado pelo servidor.
       </small>
     </Modal>
   );

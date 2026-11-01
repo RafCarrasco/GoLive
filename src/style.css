@@ -948,6 +948,50 @@ h2 {
 .empty {
   margin: 6px 4px;
 }
+.role-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+.role-chip {
+  --role: var(--primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 11px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.role-chip:disabled {
+  cursor: default;
+  opacity: 1;
+}
+.role-chip.on {
+  border-color: var(--role);
+  color: var(--text);
+  background: color-mix(in srgb, var(--role) 18%, transparent);
+}
+.role-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--role);
+}
+.role-chip:not(.on) .role-dot {
+  opacity: 0.4;
+}
+.role-swatch {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px var(--surface);
+}
 
 /* ---------- Modais ---------- */
 .modal-backdrop {

@@ -10,42 +10,69 @@ import {
   watchChannels,
   watchProfiles,
   watchRoles,
+  watchCategoryRoles,
+  watchChannelRoles,
+  watchMemberRoles,
+  watchRoleDefs,
+  type AccessData,
   type AccessLevel,
   type Category,
   type Channel,
   type CommunityRole,
   type Profile,
+  type RoleDef,
+  type RoleLists,
 } from '../community';
 import { parseBroadcasts, type Broadcasts } from '../live/room';
 
-export type CommunityData = {
+export type CommunityData = AccessData & {
   loaded: boolean;
-  channels: Record<string, Channel>;
   categories: Record<string, Category>;
-  channelAccess: Record<string, AccessLevel>;
-  categoryAccess: Record<string, AccessLevel>;
   profiles: Record<string, Profile>;
-  roles: Record<string, CommunityRole>;
+  roleDefs: Record<string, RoleDef>;
 };
 
-export function useCommunity(): CommunityData {
+export function useCommunity(uid: string): CommunityData {
   const [channels, setChannels] = useState<Record<string, Channel>>(SYSTEM_CHANNELS);
   const [categories, setCategories] = useState<Record<string, Category>>(DEFAULT_CATEGORIES);
   const [channelAccess, setChannelAccess] = useState<Record<string, AccessLevel>>({});
   const [categoryAccess, setCategoryAccess] = useState<Record<string, AccessLevel>>({});
   const [profiles, setProfiles] = useState<Record<string, Profile> | null>(null);
   const [roles, setRoles] = useState<Record<string, CommunityRole>>({});
+  const [roleDefs, setRoleDefs] = useState<Record<string, RoleDef>>({});
+  const [memberRoles, setMemberRoles] = useState<Record<string, Record<string, true>>>({});
+  const [categoryRoles, setCategoryRoles] = useState<RoleLists>({});
+  const [channelRoles, setChannelRoles] = useState<RoleLists>({});
   useEffect(() => {
     const unsubs = [
-      watchChannels(setChannels),
-      watchCategories(setCategories),
       watchChannelAccess(setChannelAccess),
       watchCategoryAccess(setCategoryAccess),
       watchProfiles(setProfiles),
       watchRoles(setRoles),
+      watchRoleDefs(setRoleDefs),
+      watchMemberRoles(setMemberRoles),
+      watchCategoryRoles(setCategoryRoles),
+      watchChannelRoles(setChannelRoles),
     ];
     return () => unsubs.forEach((u) => u());
   }, []);
+
+  // O servidor só entrega as categorias e canais que a pessoa pode ver, e um pedido recusado não é
+  // refeito sozinho. Quando cargos ou permissões mudam, as leituras são refeitas para refletir o
+  // novo acesso na hora (ganhar um cargo mostra a categoria sem recarregar a página).
+  const permissions = JSON.stringify([
+    roles[uid],
+    memberRoles[uid],
+    channelAccess,
+    categoryAccess,
+    channelRoles,
+    categoryRoles,
+  ]);
+  useEffect(() => {
+    const unsubs = [watchChannels(setChannels), watchCategories(setCategories)];
+    return () => unsubs.forEach((u) => u());
+  }, [permissions]);
+
   return {
     loaded: profiles !== null,
     channels,
@@ -54,6 +81,10 @@ export function useCommunity(): CommunityData {
     categoryAccess,
     profiles: profiles || {},
     roles,
+    roleDefs,
+    memberRoles,
+    categoryRoles,
+    channelRoles,
   };
 }
 

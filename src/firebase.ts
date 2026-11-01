@@ -11,7 +11,7 @@ const firebaseConfig = useEmulators
       authDomain: 'demo-nimbo.firebaseapp.com',
       projectId: 'demo-nimbo',
       appId: 'demo-nimbo',
-      databaseURL: 'http://127.0.0.1:9000?ns=demo-nimbo',
+      databaseURL: 'http://127.0.0.1:9000?ns=demo-nimbo-default-rtdb',
     }
   : {
       apiKey: 'AIzaSyDMW8WLXjug0v9QSes9a3pwDqa6MUqYDc0',

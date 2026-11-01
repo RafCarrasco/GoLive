@@ -2,7 +2,7 @@
 // A conta owner@nimbo.test vira proprietária; as demais, membros.
 // Uso: entre no app com ?devUser=owner (e outros nomes) e depois rode `npm run emulator:approve`.
 const base = 'http://127.0.0.1:9000';
-const ns = '?ns=demo-nimbo';
+const ns = '?ns=demo-nimbo-default-rtdb';
 const headers = { Authorization: 'Bearer owner', 'Content-Type': 'application/json' };
 
 const res = await fetch(`${base}/community/requests.json${ns}`, { headers });

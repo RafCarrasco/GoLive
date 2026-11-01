@@ -22,22 +22,43 @@ const approvedOwner = and(approved, isOwner);
 const levelOk = (node) =>
   or(`!${node}.exists()`, `${node}.val() === 'member'`, and(`${node}.val() === 'admin'`, isAdmin), isOwner);
 
-const channelNode = "root.child('community/channels').child($room)";
-const categoryId = `${channelNode}.child('categoryId')`;
+// Cargos personalizados (grupos de amigos). Uma categoria ou canal pode exigir até ROLE_SLOTS cargos,
+// guardados em posições fixas ("0".."4") porque as regras não conseguem percorrer listas.
+// Sem nenhum cargo marcado, vale só o nível (member/admin/owner). Administradores ignoram cargos.
+const ROLE_SLOTS = 5;
+const slots = Array.from({ length: ROLE_SLOTS }, (_, i) => String(i));
+const hasRole = (roleId) => `root.child('community/memberRoles').child(auth.uid).child(${roleId}).exists()`;
+const rolesOk = (node) =>
+  or(
+    `!${node}.exists()`,
+    isAdmin,
+    ...slots.map((i) => and(`${node}.child('${i}').exists()`, hasRole(`${node}.child('${i}').val()`))),
+  );
+const categoryVisible = (id) =>
+  and(
+    levelOk(`root.child('community/categoryAccess').child(${id})`),
+    rolesOk(`root.child('community/categoryRoles').child(${id})`),
+  );
+
+// Visibilidade de um canal (metadados e sala). O guard em categoryId evita child(null), que invalida
+// a regra; canal sem categoria pertence à categoria padrão.
+const channelVisible = (idVar) => {
+  const node = `root.child('community/channels').child(${idVar})`;
+  const categoryId = `${node}.child('categoryId')`;
+  return and(
+    levelOk(`root.child('community/channelAccess').child(${idVar})`),
+    rolesOk(`root.child('community/channelRoles').child(${idVar})`),
+    or(
+      and(`${categoryId}.exists()`, categoryVisible(`${categoryId}.val()`)),
+      and(`!${categoryId}.exists()`, categoryVisible(`'${DEFAULT_CATEGORY}'`)),
+    ),
+  );
+};
 const channelExists = or(
   ...SYSTEM_CHANNELS.map((id) => `$room === '${id}'`),
-  `${channelNode}.child('enabled').val() === true`,
+  "root.child('community/channels').child($room).child('enabled').val() === true",
 );
-const channelLevel = levelOk("root.child('community/channelAccess').child($room)");
-// Canal sem categoria pertence à categoria padrão. O guard evita child(null), que invalida a regra.
-const categoryLevel = or(
-  and(`${categoryId}.exists()`, levelOk(`root.child('community/categoryAccess').child(${categoryId}.val())`)),
-  and(
-    `!${categoryId}.exists()`,
-    levelOk(`root.child('community/categoryAccess').child('${DEFAULT_CATEGORY}')`),
-  ),
-);
-const canRoom = and(approved, channelExists, channelLevel, categoryLevel);
+const canRoom = and(approved, channelExists, channelVisible('$room'));
 
 const member = (uidExpr) => `root.child('rooms').child($room).child('members').child(${uidExpr}).exists()`;
 const accessLevel = "newData.val() === 'member' || newData.val() === 'admin' || newData.val() === 'owner'";
@@ -176,9 +197,19 @@ const rules = {
           ...noOtherFields,
         },
       },
-      categories: {
+      // Índices só com ids (sem nomes): o app descobre o que existe e lê cada item individualmente.
+      // Categorias e canais sem acesso são recusados pelo servidor e nem aparecem.
+      categoryIds: {
         '.read': approved,
+        $id: { '.write': approvedAdmin, '.validate': 'newData.isNumber()' },
+      },
+      channelIds: {
+        '.read': approved,
+        $id: { '.write': approvedAdmin, '.validate': 'newData.val() === true' },
+      },
+      categories: {
         $id: {
+          '.read': and(approved, categoryVisible('$id')),
           '.write': and(approvedAdmin, `$id !== '${DEFAULT_CATEGORY}'`),
           '.validate': and(
             "newData.hasChildren(['name','createdAt','createdBy','order'])",
@@ -190,8 +221,8 @@ const rules = {
         },
       },
       channels: {
-        '.read': approved,
         $channel: {
+          '.read': and(approved, channelVisible('$channel')),
           '.write': and(approvedAdmin, ...SYSTEM_CHANNELS.map((id) => `$channel !== '${id}'`)),
           '.validate': and(
             "newData.hasChildren(['name','description','createdBy','createdAt','visibility','enabled'])",
@@ -212,6 +243,44 @@ const rules = {
         '.read': approved,
         $id: { '.write': accessWrite, '.validate': accessLevel },
       },
+      roleDefs: {
+        '.read': approved,
+        $roleId: {
+          '.write': approvedOwner,
+          '.validate': and(
+            "newData.hasChildren(['name','color','createdAt'])",
+            str('name', 2, 24),
+            "newData.child('color').isString()",
+            "newData.child('color').val().matches(/^#[0-9a-fA-F]{6}$/)",
+            "newData.child('createdAt').isNumber()",
+          ),
+          name: { '.validate': 'newData.isString()' },
+          color: { '.validate': 'newData.isString()' },
+          createdAt: { '.validate': 'newData.isNumber()' },
+          ...noOtherFields,
+        },
+      },
+      memberRoles: {
+        '.read': approved,
+        $uid: {
+          '.write': approvedOwner,
+          $roleId: { '.validate': 'newData.val() === true' },
+        },
+      },
+      ...Object.fromEntries(
+        ['categoryRoles', 'channelRoles'].map((key) => [
+          key,
+          {
+            '.read': approved,
+            $id: {
+              '.write': approvedOwner,
+              $slot: {
+                '.validate': and(or(...slots.map((i) => `$slot === '${i}'`)), 'newData.isString()'),
+              },
+            },
+          },
+        ]),
+      ),
     },
   },
 };
