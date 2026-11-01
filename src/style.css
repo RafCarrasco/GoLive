@@ -235,3 +235,13 @@
 .participant-label small{font-size:10px;color:#9daecb}.sidebar-participant.is-live .participant-label small{color:#ff8999}
 .participant-live-icon{font-size:16px;color:#b2a3ff}
 .broadcast-actions{display:flex;gap:8px;flex-wrap:wrap}.broadcast-actions button:first-child{background:#283651}.broadcast-actions button{font-size:12px}
+
+
+/* Membership polish and first-time nickname */
+.nickname-gate input{width:100%;min-height:48px;text-align:center;font-size:15px}
+.nickname-gate button{width:100%}
+.sidebar-room-members{padding-bottom:13px}
+.sidebar-member-caption{display:block;font-size:10px;color:#a8b9d2}
+.sidebar-participant:disabled{opacity:.65}
+.status-feedback{display:none}
+.status-feedback.is-busy{display:block}
