@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { LayoutGrid, RectangleHorizontal, Users } from 'lucide-react';
+import { LayoutGrid, RectangleHorizontal, Users, Video } from 'lucide-react';
 import { LiveTile, type TileState } from './LiveTile';
-import type { LiveSnapshot } from '../live/room';
+import { liveKey, parseLiveKey, type LiveSnapshot } from '../live/room';
+import type { StreamKind } from '../live/capture';
 import { fitGrid, GAP } from '../lib/layout';
 
 function useSize<T extends HTMLElement>() {
@@ -65,42 +66,67 @@ export function Stage({
     }
   }, [audio]);
 
-  // A própria live aparece assim que a captura começa; um registro antigo sem captura local é ignorado.
-  const active = [...(live.local ? [uid] : []), ...Object.keys(live.broadcasts).filter((id) => id !== uid)];
-  const shown = visible.filter((id) => active.includes(id));
-  const toggle = (id: string) =>
-    setVisible((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+  // Cada live é "uid:screen" ou "uid:camera". As próprias aparecem assim que a captura começa; um
+  // registro antigo no banco sem captura local é ignorado.
+  const ownKeys = (Object.keys(live.local) as StreamKind[]).map((kind) => liveKey(uid, kind));
+  const otherKeys = Object.entries(live.broadcasts).flatMap(([id, kinds]) =>
+    id === uid ? [] : (Object.keys(kinds) as StreamKind[]).map((kind) => liveKey(id, kind)),
+  );
+  const active = [...ownKeys, ...otherKeys];
+  const shown = visible.filter((key) => active.includes(key));
+  const toggle = (key: string) =>
+    setVisible((keys) => (keys.includes(key) ? keys.filter((x) => x !== key) : [...keys, key]));
   const setPref = useCallback(
-    (id: string, patch: Partial<{ volume: number; muted: boolean }>) =>
-      setAudio((old) => ({ ...old, [id]: { ...(old[id] ?? { volume: 100, muted: false }), ...patch } })),
+    (key: string, patch: Partial<{ volume: number; muted: boolean }>) =>
+      setAudio((old) => ({ ...old, [key]: { ...(old[key] ?? { volume: 100, muted: false }), ...patch } })),
     [],
   );
 
-  const main = layout === 'focus' ? shown.find((id) => id === focused) || shown[0] : '';
-  const strip = layout === 'focus' ? shown.filter((id) => id !== main) : [];
-  const gridIds = layout === 'focus' ? (main ? [main] : []) : shown;
+  // Como no Discord: clicar numa live a destaca (as outras vão para a faixa de baixo);
+  // clicar na destacada volta para a grade.
+  const focusMode = layout === 'focus' && shown.length > 1;
+  const main = focusMode ? shown.find((key) => key === focused) || shown[0] : '';
+  const strip = focusMode ? shown.filter((key) => key !== main) : [];
+  const gridKeys = focusMode ? [main] : shown;
   const stripHeight = strip.length ? 132 : 0;
-  const fit = fitGrid(gridIds.length, size.width, size.height - stripHeight - (strip.length ? GAP : 0));
+  const fit = fitGrid(gridKeys.length, size.width, size.height - stripHeight - (strip.length ? GAP : 0));
+  const select = (key: string) => {
+    if (shown.length < 2) return;
+    if (focusMode && key === main) setLayout('grid');
+    else {
+      setFocused(key);
+      setLayout('focus');
+    }
+  };
 
-  const tileFor = (id: string, compact = false) => {
+  const labelOf = (key: string) => {
+    const { uid: id, kind } = parseLiveKey(key);
+    if (id === uid) return kind === 'camera' ? 'Sua câmera' : 'Sua tela';
+    return nameOf(id);
+  };
+
+  const tileFor = (key: string, compact = false) => {
+    const { uid: id, kind } = parseLiveKey(key);
     const own = id === uid;
-    const stream = own ? live.local : live.remote[id] || null;
+    const streamId = live.broadcasts[id]?.[kind]?.streamId;
+    const stream = (own ? live.local[kind] : streamId ? live.remote[id]?.[streamId] : undefined) || null;
     const state: TileState = live.failed.includes(id) ? 'failed' : stream ? 'playing' : 'connecting';
-    const pref = audio[id] || { volume: 100, muted: false };
+    const pref = audio[key] || { volume: 100, muted: false };
     return (
       <LiveTile
-        key={id}
-        name={own ? 'Sua live' : nameOf(id)}
+        key={key}
+        name={labelOf(key)}
         stream={stream}
         own={own}
-        camera={(own ? live.localKind : live.broadcasts[id]?.kind) === 'camera'}
+        camera={kind === 'camera'}
         state={state}
         volume={pref.volume}
         muted={pref.muted}
-        onVolume={(volume) => setPref(id, { volume })}
-        onMute={(muted) => setPref(id, { muted })}
-        onClose={() => setVisible((ids) => ids.filter((x) => x !== id))}
-        onFocus={() => setFocused(id)}
+        onVolume={(volume) => setPref(key, { volume })}
+        onMute={(muted) => setPref(key, { muted })}
+        onClose={() => setVisible((keys) => keys.filter((x) => x !== key))}
+        onSelect={shown.length > 1 ? () => select(key) : undefined}
+        selected={focusMode && key === main}
         onRetry={() => onRetry(id)}
         compact={compact}
         style={compact ? undefined : { width: fit.width, height: fit.height }}
@@ -118,23 +144,27 @@ export function Stage({
           </span>
         </div>
         <div className="live-chips" role="toolbar" aria-label="Lives do canal">
-          {active.map((id) => (
-            <button
-              key={id}
-              className={'live-chip' + (visible.includes(id) ? ' on' : '')}
-              aria-pressed={visible.includes(id)}
-              title={visible.includes(id) ? 'Ocultar live' : 'Assistir live'}
-              onClick={() => toggle(id)}
-            >
-              <span className="dot" />
-              {id === uid ? 'Você' : nameOf(id)}
-            </button>
-          ))}
+          {active.map((key) => {
+            const { uid: id, kind } = parseLiveKey(key);
+            return (
+              <button
+                key={key}
+                className={'live-chip' + (visible.includes(key) ? ' on' : '')}
+                aria-pressed={visible.includes(key)}
+                title={visible.includes(key) ? 'Ocultar live' : 'Assistir live'}
+                onClick={() => toggle(key)}
+              >
+                <span className="dot" />
+                {id === uid ? 'Você' : nameOf(id)}
+                {kind === 'camera' && <Video size={13} aria-label="câmera" />}
+              </button>
+            );
+          })}
         </div>
         {shown.length > 1 && (
           <div className="segmented" role="group" aria-label="Layout">
             <button
-              className={layout === 'grid' ? 'on' : ''}
+              className={!focusMode ? 'on' : ''}
               title="Grade"
               aria-label="Grade"
               onClick={() => setLayout('grid')}
@@ -142,7 +172,7 @@ export function Stage({
               <LayoutGrid size={16} />
             </button>
             <button
-              className={layout === 'focus' ? 'on' : ''}
+              className={focusMode ? 'on' : ''}
               title="Destaque"
               aria-label="Destaque"
               onClick={() => setLayout('focus')}
@@ -169,9 +199,9 @@ export function Stage({
               className="tile-grid"
               style={{ width: fit.cols * fit.width + (fit.cols - 1) * GAP + 1, gap: GAP }}
             >
-              {gridIds.map((id) => tileFor(id))}
+              {gridKeys.map((key) => tileFor(key))}
             </div>
-            {strip.length > 0 && <div className="tile-strip">{strip.map((id) => tileFor(id, true))}</div>}
+            {strip.length > 0 && <div className="tile-strip">{strip.map((key) => tileFor(key, true))}</div>}
           </>
         )}
       </div>

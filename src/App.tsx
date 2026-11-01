@@ -13,6 +13,7 @@ import { useAuth } from './hooks/useAuth';
 import { useCommunity, useRoomsPresence } from './hooks/useCommunity';
 import { useLiveRoom } from './hooks/useLiveRoom';
 import { loadCaptureSettings, saveCaptureSettings, type StreamKind } from './live/capture';
+import { liveKey } from './live/room';
 import { signOutAccount } from './session';
 import { LoadingScreen, LoginScreen, NicknameScreen, PendingScreen } from './components/AuthScreens';
 import { Sidebar } from './components/Sidebar';
@@ -48,17 +49,27 @@ function Community({ uid }: { uid: string }) {
   const { snapshot } = live;
   const room = snapshot.room;
 
+  // Lives abertas no palco, por chave "uid:screen" / "uid:camera".
   const [visible, setVisible] = useState<string[]>([]);
-  // Logo depois de entrar, as lives que já estavam no ar abrem sozinhas (até 4). A lista do canal
-  // chega um instante depois da entrada, por isso a janela de alguns segundos.
-  const autoOpenUntil = useRef(0);
+  const keysOf = useCallback(
+    (member?: string) =>
+      Object.entries(snapshot.broadcasts).flatMap(([id, kinds]) =>
+        id === uid || (member && id !== member)
+          ? []
+          : (Object.keys(kinds) as StreamKind[]).map((kind) => liveKey(id, kind)),
+      ),
+    [snapshot.broadcasts, uid],
+  );
+  // Logo depois de entrar, as lives que já estavam no ar (ou as da pessoa escolhida) abrem sozinhas.
+  // A lista do canal chega um instante depois da entrada, por isso a janela de alguns segundos.
+  const autoOpen = useRef<{ until: number; member?: string }>({ until: 0 });
   useEffect(() => {
-    if (Date.now() > autoOpenUntil.current) return;
-    const others = Object.keys(snapshot.broadcasts).filter((id) => id !== uid);
-    if (!others.length) return;
-    autoOpenUntil.current = 0;
-    setVisible((ids) => [...new Set([...ids, ...others])].slice(0, 4));
-  }, [snapshot.broadcasts, uid]);
+    if (Date.now() > autoOpen.current.until) return;
+    const keys = keysOf(autoOpen.current.member);
+    if (!keys.length) return;
+    autoOpen.current.until = 0;
+    setVisible((ids) => [...new Set([...ids, ...keys])].slice(0, 4));
+  }, [keysOf]);
   const [adminOpen, setAdminOpen] = useState(false);
   const [permission, setPermission] = useState<{ kind: 'category' | 'channel'; id: string } | null>(null);
   const [showStreamSettings, setShowStreamSettings] = useState(false);
@@ -82,18 +93,18 @@ function Community({ uid }: { uid: string }) {
     async (channelId: string, watch?: string) => {
       setAdminOpen(false);
       if (room === channelId) {
-        if (watch) setVisible((ids) => (ids.includes(watch) ? ids : [...ids, watch]));
+        if (watch) setVisible((ids) => [...new Set([...ids, ...keysOf(watch)])]);
         return;
       }
       try {
         await live.join(channelId);
-        setVisible(watch ? [watch] : []);
-        autoOpenUntil.current = watch ? 0 : Date.now() + 5000;
+        setVisible([]);
+        autoOpen.current = { until: Date.now() + 5000, member: watch };
       } catch (e) {
         toast.error(e);
       }
     },
-    [live, room, presence, uid, toast],
+    [live, room, keysOf, toast],
   );
 
   // Link de convite (?room=) e reabertura da página.
@@ -116,14 +127,25 @@ function Community({ uid }: { uid: string }) {
 
   const toggleBroadcast = async (kind: StreamKind) => {
     try {
-      if (snapshot.localKind === kind) {
-        await live.stop();
+      if (snapshot.local[kind]) {
+        await live.stop(kind);
         toast.info(kind === 'camera' ? 'Webcam desligada' : 'Transmissão encerrada');
         return;
       }
       await live.start(kind, capture);
-      setVisible((ids) => (ids.includes(uid) ? ids : [...ids, uid]));
+      const key = liveKey(uid, kind);
+      setVisible((ids) => (ids.includes(key) ? ids : [...ids, key]));
       toast.success(kind === 'camera' ? 'Webcam ao vivo' : 'Transmissão iniciada');
+    } catch (e) {
+      toast.error(e);
+    }
+  };
+
+  // Escolhe outra tela ou janela sem encerrar a live (como o "Trocar" do Discord).
+  const swapScreen = async () => {
+    try {
+      await live.start('screen', capture, true);
+      toast.success('Transmissão trocada');
     } catch (e) {
       toast.error(e);
     }
@@ -191,7 +213,8 @@ function Community({ uid }: { uid: string }) {
             channelName={channelName}
             joined={snapshot.joined}
             online={snapshot.online}
-            liveKind={snapshot.localKind}
+            liveKinds={{ screen: Boolean(snapshot.local.screen), camera: Boolean(snapshot.local.camera) }}
+            onSwap={() => void swapScreen()}
             busy={live.busy}
             nickname={nickname}
             roleLabel={roleLabel[role]}
@@ -259,7 +282,7 @@ function Community({ uid }: { uid: string }) {
       {showStreamSettings && (
         <StreamSettingsModal
           settings={capture}
-          live={Boolean(snapshot.localKind)}
+          live={Object.keys(snapshot.local).length > 0}
           onChange={(next) => {
             setCapture(next);
             saveCaptureSettings(next);

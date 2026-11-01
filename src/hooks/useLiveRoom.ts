@@ -16,8 +16,7 @@ const EMPTY: LiveSnapshot = {
   online: true,
   members: [],
   broadcasts: {},
-  local: null,
-  localKind: null,
+  local: {},
   remote: {},
   failed: [],
 };
@@ -82,15 +81,17 @@ export function useLiveRoom(uid: string, handlers: Handlers) {
     [uid, leave, tabId],
   );
 
-  const start = useCallback(async (kind: StreamKind, settings: CaptureSettings) => {
+  // replace = trocar a tela/janela de uma live que já está no ar, sem encerrá-la.
+  const start = useCallback(async (kind: StreamKind, settings: CaptureSettings, replace = false) => {
     const room = current.current;
     if (!room) return;
     setBusy('starting');
     try {
+      const params = new URLSearchParams(location.search);
       const stream =
-        new URLSearchParams(location.search).has('fakeMedia') && useEmulators
+        params.has('fakeMedia') && useEmulators
           ? createTestStream(
-              `${new URLSearchParams(location.search).get('devUser') || 'Teste'} · ${kind === 'camera' ? 'Webcam' : 'Tela'}`,
+              `${params.get('devUser') || 'Teste'} · ${kind === 'camera' ? 'Webcam' : 'Tela'}${replace ? ' 2' : ''}`,
               settings.frameRate,
             )
           : kind === 'camera'
@@ -100,14 +101,15 @@ export function useLiveRoom(uid: string, handlers: Handlers) {
         stream.getTracks().forEach((t) => t.stop());
         return;
       }
-      await room.startBroadcast(stream, kind, maxBitrate(kind, settings));
+      if (replace) await room.replaceSource(kind, stream, maxBitrate(kind, settings));
+      else await room.startBroadcast(stream, kind, maxBitrate(kind, settings));
     } finally {
       setBusy('');
     }
   }, []);
 
-  const stop = useCallback(async () => {
-    await current.current?.stopBroadcast();
+  const stop = useCallback(async (kind?: StreamKind) => {
+    await current.current?.stopBroadcast(kind);
   }, []);
 
   const retry = useCallback((id: string) => current.current?.retry(id), []);

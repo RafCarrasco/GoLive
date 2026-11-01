@@ -75,7 +75,7 @@ beforeEach(async () => {
       rooms: {
         geral: {
           members: { owner: { joinedAt: 1 }, member: { joinedAt: 1 } },
-          streams: { owner: true },
+          streams: { owner: { screen: { startedAt: 1, streamId: 's1' } } },
           signals: { owner: { member: { m1: { type: 'ice', candidate: { candidate: 'x' } } } } },
         },
         vip: { members: { owner: { joinedAt: 1 } } },
@@ -260,10 +260,20 @@ describe('salas', () => {
     await assertSucceeds(remove(ref(admin(), 'rooms/geral/members/member')));
   });
   test('transmissão exige estar no canal', async () => {
-    await assertSucceeds(set(ref(member(), 'rooms/geral/streams/member'), { kind: 'screen', startedAt: 1 }));
-    await assertFails(set(ref(admin(), 'rooms/geral/streams/admin'), { kind: 'screen', startedAt: 1 }));
-    await assertFails(set(ref(member(), 'rooms/geral/streams/owner'), true));
-    await assertFails(set(ref(member(), 'rooms/geral/streams/member'), { kind: 'virus', startedAt: 1 }));
+    const live = { startedAt: 1, streamId: 'abc' };
+    await assertSucceeds(set(ref(member(), 'rooms/geral/streams/member/screen'), live));
+    await assertSucceeds(set(ref(member(), 'rooms/geral/streams/member/camera'), live));
+    await assertFails(set(ref(admin(), 'rooms/geral/streams/admin/screen'), live));
+    await assertFails(set(ref(member(), 'rooms/geral/streams/owner/screen'), live));
+    await assertFails(set(ref(member(), 'rooms/geral/streams/member/virus'), live));
+    await assertFails(set(ref(member(), 'rooms/geral/streams/member'), true));
+    await assertFails(set(ref(member(), 'rooms/geral/streams/member/screen'), { startedAt: 1 }));
+  });
+  test('encerrar uma live mantém a outra; sair remove todas', async () => {
+    const live = { startedAt: 1, streamId: 'abc' };
+    await assertSucceeds(set(ref(member(), 'rooms/geral/streams/member'), { screen: live, camera: live }));
+    await assertSucceeds(remove(ref(member(), 'rooms/geral/streams/member/screen')));
+    await assertSucceeds(remove(ref(member(), 'rooms/geral/streams/member')));
   });
 });
 

@@ -16,7 +16,7 @@ import {
   type CommunityRole,
   type Profile,
 } from '../community';
-import type { Broadcast } from '../live/room';
+import { parseBroadcasts, type Broadcasts } from '../live/room';
 
 export type CommunityData = {
   loaded: boolean;
@@ -57,7 +57,7 @@ export function useCommunity(): CommunityData {
   };
 }
 
-export type RoomPresence = { members: string[]; streams: Record<string, Broadcast | boolean> };
+export type RoomPresence = { members: string[]; streams: Broadcasts };
 
 // Presença de cada canal visível na barra lateral. Escuta apenas members e streams (nunca a sala
 // inteira, que incluiria a sinalização). Canais sem permissão são recusados pelas regras e ficam vazios.
@@ -79,7 +79,7 @@ export function useRoomsPresence(channelIds: string[]) {
       ),
       onValue(
         ref(db, `rooms/${id}/streams`),
-        (s) => patch(id, 'streams', s.val() || {}),
+        (s) => patch(id, 'streams', parseBroadcasts(s.val())),
         () => patch(id, 'streams', {}),
       ),
     ]);

@@ -721,10 +721,16 @@ h2 {
   width: 235px;
   height: 132px;
   flex: none;
+}
+.live-tile.selectable {
   cursor: pointer;
 }
-.live-tile.compact:hover {
+.live-tile.selectable:not(.selected):hover {
   box-shadow: 0 0 0 2px var(--primary);
+}
+/* A própria câmera aparece espelhada, como em qualquer app de vídeo; quem assiste vê normal. */
+.live-tile.mirror video {
+  transform: scaleX(-1);
 }
 .tile-placeholder {
   position: absolute;

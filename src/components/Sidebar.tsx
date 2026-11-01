@@ -12,7 +12,6 @@ import {
 } from 'lucide-react';
 import { channelAllowed, isStaff, type AccessLevel } from '../community';
 import type { CommunityData, RoomPresence } from '../hooks/useCommunity';
-import type { Broadcast } from '../live/room';
 
 const COLLAPSE_KEY = 'nimbo.collapsed';
 
@@ -130,7 +129,7 @@ export function Sidebar({
                 channels.map(([id, channel]) => {
                   const allowed = channelAllowed(id, channel, role, data.channelAccess, data.categoryAccess);
                   const here = (allowed && presence[id]) || { members: [], streams: {} };
-                  const streams = here.streams as Record<string, Broadcast | boolean>;
+                  const streams = here.streams;
                   const members = here.members.filter((m) => m === uid || data.profiles[m] || staff);
                   const liveCount = members.filter((m) => streams[m]).length;
                   const restriction = restrictedLabel(data.channelAccess[id]);
@@ -176,8 +175,8 @@ export function Sidebar({
                             const profileName = data.profiles[memberId]?.displayName;
                             const name =
                               memberId === uid && profileName ? profileName + ' (você)' : profileName;
-                            const stream = streams[memberId];
-                            const camera = typeof stream === 'object' && stream.kind === 'camera';
+                            const kinds = streams[memberId] || {};
+                            const stream = Boolean(kinds.screen || kinds.camera);
                             return (
                               <li key={memberId}>
                                 <button
@@ -192,7 +191,8 @@ export function Sidebar({
                                   <span className="participant-name">{name || 'Sessão sem perfil'}</span>
                                   {stream && (
                                     <span className="live-pill">
-                                      {camera ? <Video size={10} /> : <Radio size={10} />}
+                                      {kinds.screen && <Radio size={10} />}
+                                      {kinds.camera && <Video size={10} />}
                                       AO VIVO
                                     </span>
                                   )}

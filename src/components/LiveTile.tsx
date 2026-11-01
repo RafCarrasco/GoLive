@@ -25,7 +25,8 @@ export function LiveTile({
   onVolume,
   onMute,
   onClose,
-  onFocus,
+  onSelect,
+  selected,
   onRetry,
   compact,
   style,
@@ -40,7 +41,9 @@ export function LiveTile({
   onVolume: (value: number) => void;
   onMute: (value: boolean) => void;
   onClose: () => void;
-  onFocus?: () => void;
+  // Clique na live: destacar (ou voltar para a grade, se já for a destacada).
+  onSelect?: () => void;
+  selected?: boolean;
   onRetry?: () => void;
   compact?: boolean;
   style?: React.CSSProperties;
@@ -108,10 +111,20 @@ export function LiveTile({
   return (
     <section
       ref={tile}
-      className={'live-tile' + (compact ? ' compact' : '') + (own ? ' own' : '')}
+      className={
+        'live-tile' +
+        (compact ? ' compact' : '') +
+        (onSelect ? ' selectable' : '') +
+        (selected ? ' selected' : '') +
+        (own && camera ? ' mirror' : '')
+      }
       style={style}
-      onDoubleClick={compact ? undefined : toggleFullscreen}
-      onClick={compact ? onFocus : undefined}
+      title={onSelect && !fullscreen ? (selected ? 'Voltar para a grade' : 'Destacar esta live') : undefined}
+      onClick={(e) => {
+        // Cliques nos controles (volume, tela cheia, fechar) não mudam o destaque.
+        if ((e.target as HTMLElement).closest('button, input')) return;
+        if (!fullscreen) onSelect?.();
+      }}
     >
       <video ref={video} autoPlay playsInline muted={silent} />
       {(state !== 'playing' || !hasFrames) && (
@@ -149,7 +162,7 @@ export function LiveTile({
         )}
       </div>
       {!compact && (
-        <div className="tile-controls" onDoubleClick={(e) => e.stopPropagation()}>
+        <div className="tile-controls">
           {!own && hasAudio && (
             <div className="volume">
               <button

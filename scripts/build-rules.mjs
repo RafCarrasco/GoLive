@@ -81,14 +81,17 @@ const rules = {
               and(google, 'auth.uid === $uid', '!newData.exists()'),
               and(approvedAdmin, '!newData.exists()'),
             ),
-            '.validate': or(
-              'newData.isBoolean()',
-              and(
-                "newData.hasChildren(['kind','startedAt'])",
-                "(newData.child('kind').val() === 'screen' || newData.child('kind').val() === 'camera')",
+            // Cada pessoa pode ter uma live de tela e uma de câmera ao mesmo tempo.
+            '.validate': 'newData.hasChildren()',
+            $kind: {
+              '.validate': and(
+                "($kind === 'screen' || $kind === 'camera')",
+                "newData.hasChildren(['startedAt','streamId'])",
                 "newData.child('startedAt').isNumber()",
+                "newData.child('streamId').isString()",
+                "newData.child('streamId').val().length <= 100",
               ),
-            ),
+            },
           },
         },
         signals: {

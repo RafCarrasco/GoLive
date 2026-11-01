@@ -2,6 +2,7 @@ import {
   Link,
   LoaderCircle,
   LogOut,
+  MonitorUp,
   PhoneOff,
   ScreenShare,
   ScreenShareOff,
@@ -19,7 +20,8 @@ export function UserPanel({
   channelName,
   joined,
   online,
-  liveKind,
+  liveKinds,
+  onSwap,
   busy,
   nickname,
   roleLabel,
@@ -33,7 +35,8 @@ export function UserPanel({
   channelName: string;
   joined: boolean;
   online: boolean;
-  liveKind: StreamKind | null;
+  liveKinds: Record<StreamKind, boolean>;
+  onSwap: () => void;
   busy: '' | 'joining' | 'starting';
   nickname: string;
   roleLabel: string;
@@ -44,18 +47,19 @@ export function UserPanel({
   onProfile: () => void;
   onSignOut: () => void;
 }) {
-  const ScreenIcon = liveKind === 'screen' ? ScreenShareOff : ScreenShare;
-  const CameraIcon = liveKind === 'camera' ? VideoOff : Video;
+  const ScreenIcon = liveKinds.screen ? ScreenShareOff : ScreenShare;
+  const CameraIcon = liveKinds.camera ? VideoOff : Video;
+  const live = liveKinds.screen || liveKinds.camera;
   return (
     <footer className="user-panel">
       {joined && (
         <div className="voice-panel">
           <div className="connection-row">
-            <span className={'connection ' + (online ? (liveKind ? 'live' : 'ok') : 'offline')}>
+            <span className={'connection ' + (online ? (live ? 'live' : 'ok') : 'offline')}>
               {online ? <Signal size={16} /> : <WifiOff size={16} />}
             </span>
             <div className="connection-text">
-              <strong>{!online ? 'Reconectando…' : liveKind ? 'Ao vivo' : 'Conectado'}</strong>
+              <strong>{!online ? 'Reconectando…' : live ? 'Ao vivo' : 'Conectado'}</strong>
               <small>{channelName}</small>
             </div>
             <button
@@ -77,25 +81,36 @@ export function UserPanel({
           </div>
           <div className="stream-buttons">
             <button
-              className={'stream-button' + (liveKind === 'camera' ? ' live' : '')}
+              className={'stream-button' + (liveKinds.camera ? ' live' : '')}
               disabled={busy !== ''}
-              aria-pressed={liveKind === 'camera'}
-              title={liveKind === 'camera' ? 'Desligar webcam' : 'Ligar webcam'}
+              aria-pressed={liveKinds.camera}
+              title={liveKinds.camera ? 'Desligar webcam' : 'Ligar webcam'}
               onClick={() => onToggle('camera')}
             >
               <CameraIcon size={18} />
               <span>Webcam</span>
             </button>
             <button
-              className={'stream-button' + (liveKind === 'screen' ? ' live' : '')}
+              className={'stream-button' + (liveKinds.screen ? ' live' : '')}
               disabled={busy !== ''}
-              aria-pressed={liveKind === 'screen'}
-              title={liveKind === 'screen' ? 'Encerrar transmissão' : 'Compartilhar tela'}
+              aria-pressed={liveKinds.screen}
+              title={liveKinds.screen ? 'Encerrar transmissão' : 'Compartilhar tela'}
               onClick={() => onToggle('screen')}
             >
               {busy === 'starting' ? <LoaderCircle size={18} className="spin" /> : <ScreenIcon size={18} />}
-              <span>{liveKind === 'screen' ? 'Encerrar' : 'Tela'}</span>
+              <span>{liveKinds.screen ? 'Encerrar' : 'Tela'}</span>
             </button>
+            {liveKinds.screen && (
+              <button
+                className="stream-button square"
+                disabled={busy !== ''}
+                title="Trocar tela ou janela sem encerrar a live"
+                aria-label="Trocar tela ou janela"
+                onClick={onSwap}
+              >
+                <MonitorUp size={18} />
+              </button>
+            )}
             <button
               className="stream-button square"
               title="Configurações da transmissão"

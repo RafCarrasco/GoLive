@@ -17,17 +17,41 @@ type Signal =
   | { type: 'offer' | 'answer'; sdp: RTCSessionDescriptionInit }
   | { type: 'ice'; candidate: RTCIceCandidateInit };
 
-export type Broadcast = { kind: StreamKind | 'unknown'; startedAt: number };
+// Cada pessoa pode ter até duas lives: tela e câmera. streamId é o id do MediaStream anunciado na
+// negociação; é como quem assiste sabe qual stream recebido é a tela e qual é a câmera.
+export type Broadcast = { startedAt: number; streamId: string };
+export type Broadcasts = Record<string, Partial<Record<StreamKind, Broadcast>>>;
+export const STREAM_KINDS: StreamKind[] = ['screen', 'camera'];
+
+// Identificador de cada live na interface: "uid:screen" ou "uid:camera".
+export const liveKey = (uid: string, kind: StreamKind) => `${uid}:${kind}`;
+export const parseLiveKey = (key: string) => {
+  const i = key.lastIndexOf(':');
+  return { uid: key.slice(0, i), kind: key.slice(i + 1) as StreamKind };
+};
+
+export function parseBroadcasts(raw: unknown): Broadcasts {
+  const result: Broadcasts = {};
+  for (const [uid, value] of Object.entries((raw as Record<string, unknown>) || {})) {
+    if (!value || typeof value !== 'object') continue;
+    for (const kind of STREAM_KINDS) {
+      const live = (value as Record<string, Broadcast | undefined>)[kind];
+      if (live && typeof live === 'object' && live.streamId) (result[uid] ??= {})[kind] = live;
+    }
+  }
+  return result;
+}
 
 export type LiveSnapshot = {
   room: string;
   joined: boolean;
   online: boolean;
   members: string[];
-  broadcasts: Record<string, Broadcast>;
-  local: MediaStream | null;
-  localKind: StreamKind | null;
-  remote: Record<string, MediaStream>;
+  broadcasts: Broadcasts;
+  // Prévia local de cada live própria.
+  local: Partial<Record<StreamKind, MediaStream>>;
+  // Streams recebidos por participante, indexados pelo id anunciado.
+  remote: Record<string, Record<string, MediaStream>>;
   // Participantes cuja conexão P2P falhou de vez (sem TURN, algumas redes bloqueiam).
   failed: string[];
 };
@@ -49,8 +73,16 @@ type Peer = {
   makingOffer: boolean;
   ignoreOffer: boolean;
   candidates: RTCIceCandidateInit[];
-  transceivers: RTCRtpTransceiver[];
+  transceivers: Partial<Record<StreamKind, RTCRtpTransceiver[]>>;
   queue: Promise<void>;
+};
+
+type LocalLive = {
+  // Stream atual (muda ao trocar de tela) e o anunciado na negociação (fixo enquanto a live durar).
+  stream: MediaStream;
+  announced: MediaStream;
+  bitrate: number;
+  startedAt: number;
 };
 
 // TURN é opcional (VITE_TURN_URLS separado por vírgula, VITE_TURN_USERNAME, VITE_TURN_CREDENTIAL).
@@ -104,17 +136,15 @@ const clean = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 
 export class LiveRoom {
   private peers = new Map<string, Peer>();
-  private remote: Record<string, MediaStream> = {};
+  private remote: Record<string, Record<string, MediaStream>> = {};
   private failed = new Set<string>();
   private members: string[] = [];
   // joinedAt identifica a sessão de cada participante: muda quando a pessoa recarrega ou reconecta.
   private sessions: Record<string, unknown> = {};
   private membersLoaded = false;
   private pendingInbox: Record<string, Record<string, Signal>> | null = null;
-  private broadcasts: Record<string, Broadcast> = {};
-  private local: MediaStream | null = null;
-  private localKind: StreamKind | null = null;
-  private bitrate = 0;
+  private broadcasts: Broadcasts = {};
+  private locals = new Map<StreamKind, LocalLive>();
   private unsubs: Array<() => void> = [];
   private seen = new Set<string>();
   private joined = false;
@@ -136,7 +166,7 @@ export class LiveRoom {
   private get memberRef() {
     return this.path(`members/${this.uid}`);
   }
-  private get streamRef() {
+  private get streamsRef() {
     return this.path(`streams/${this.uid}`);
   }
 
@@ -147,9 +177,8 @@ export class LiveRoom {
       online: this.online,
       members: this.members,
       broadcasts: this.broadcasts,
-      local: this.local,
-      localKind: this.localKind,
-      remote: { ...this.remote },
+      local: Object.fromEntries([...this.locals].map(([kind, live]) => [kind, live.stream])),
+      remote: Object.fromEntries(Object.entries(this.remote).map(([id, streams]) => [id, { ...streams }])),
       failed: [...this.failed],
     };
   }
@@ -185,12 +214,17 @@ export class LiveRoom {
     if (reset) for (const id of [...this.peers.keys()]) this.closePeer(id);
     await onDisconnect(this.memberRef).remove();
     await set(this.memberRef, { joinedAt: serverTimestamp() });
-    if (this.local) await this.publishStream();
+    for (const kind of this.locals.keys()) await this.publishStream(kind);
   }
 
-  private async publishStream() {
-    await onDisconnect(this.streamRef).remove();
-    await set(this.streamRef, { kind: this.localKind || 'screen', startedAt: serverTimestamp() });
+  private async publishStream(kind: StreamKind) {
+    const live = this.locals.get(kind);
+    if (!live) return;
+    await onDisconnect(this.streamsRef).remove();
+    await set(this.path(`streams/${this.uid}/${kind}`), {
+      startedAt: live.startedAt,
+      streamId: live.announced.id,
+    });
   }
 
   private listen() {
@@ -248,16 +282,14 @@ export class LiveRoom {
     for (const id of [...this.peers.keys()]) if (!present.has(id)) this.closePeer(id);
     for (const id of [...this.failed]) if (!present.has(id)) this.failed.delete(id);
     // Quem transmite inicia a conexão com quem chega; quem só assiste espera a oferta.
-    if (this.local) for (const id of ids) if (id !== this.uid) this.ensurePeer(id);
+    if (this.locals.size) for (const id of ids) if (id !== this.uid) this.ensurePeer(id);
     // Sinais que chegaram antes da lista de membros ficam guardados até aqui.
     if (firstLoad && this.pendingInbox) this.onInbox(this.pendingInbox);
     this.emit();
   }
 
-  private onBroadcasts(raw: Record<string, Broadcast | boolean>) {
-    const next: Record<string, Broadcast> = {};
-    for (const [id, value] of Object.entries(raw))
-      if (value) next[id] = typeof value === 'object' ? value : { kind: 'unknown', startedAt: 0 };
+  private onBroadcasts(raw: unknown) {
+    const next = parseBroadcasts(raw);
     // As faixas remotas não são descartadas aqui: elas podem chegar antes do registro da live.
     // A interface só exibe quem está em broadcasts, e o removetrack/closePeer limpa o resto.
     this.broadcasts = next;
@@ -310,7 +342,7 @@ export class LiveRoom {
       makingOffer: false,
       ignoreOffer: false,
       candidates: [],
-      transceivers: [],
+      transceivers: {},
       queue: Promise.resolve(),
     };
     this.peers.set(id, peer);
@@ -343,37 +375,37 @@ export class LiveRoom {
     };
     pc.ontrack = ({ track, streams }) => {
       const stream = streams[0] || new MediaStream([track]);
-      this.remote[id] = stream;
+      const byId = (this.remote[id] ??= {});
+      byId[stream.id] = stream;
       stream.onremovetrack = () => {
-        if (!stream.getTracks().length && this.remote[id] === stream) delete this.remote[id];
+        if (!stream.getTracks().length && this.remote[id]?.[stream.id] === stream)
+          delete this.remote[id][stream.id];
         this.emit();
       };
       track.onunmute = () => this.emit();
       this.emit();
     };
-    if (this.local) this.attachLocal(peer);
+    for (const kind of this.locals.keys()) this.attachLocal(peer, kind);
     return peer;
   }
 
-  private attachLocal(peer: Peer) {
-    if (!this.local || peer.transceivers.length) return;
-    for (const track of this.local.getTracks()) {
-      const encodings = track.kind === 'video' ? [{ maxBitrate: this.bitrate }] : undefined;
-      peer.transceivers.push(
-        peer.pc.addTransceiver(track, {
-          direction: 'sendonly',
-          streams: [this.local],
-          sendEncodings: encodings,
-        }),
-      );
-    }
+  private attachLocal(peer: Peer, kind: StreamKind) {
+    const live = this.locals.get(kind);
+    if (!live || peer.transceivers[kind]?.length) return;
+    peer.transceivers[kind] = live.stream.getTracks().map((track) =>
+      peer.pc.addTransceiver(track, {
+        direction: 'sendonly',
+        streams: [live.announced],
+        sendEncodings: track.kind === 'video' ? [{ maxBitrate: live.bitrate }] : undefined,
+      }),
+    );
   }
 
-  private detachLocal(peer: Peer) {
-    // stop() libera as m-lines e faz o outro lado remover apenas a nossa faixa: lives de outras
-    // pessoas que chegam pela mesma conexão continuam intactas.
-    for (const t of peer.transceivers) if (t.currentDirection !== 'stopped') t.stop();
-    peer.transceivers = [];
+  private detachLocal(peer: Peer, kind: StreamKind) {
+    // stop() libera as m-lines e faz o outro lado remover apenas esta faixa: a outra live nossa e as
+    // de outras pessoas que chegam pela mesma conexão continuam intactas.
+    for (const t of peer.transceivers[kind] || []) if (t.currentDirection !== 'stopped') t.stop();
+    delete peer.transceivers[kind];
   }
 
   private async handle(id: string, peer: Peer, msg: Signal) {
@@ -459,36 +491,65 @@ export class LiveRoom {
   }
 
   async startBroadcast(stream: MediaStream, kind: StreamKind, bitrate: number) {
-    if (this.local) await this.stopBroadcast();
-    this.local = stream;
-    this.localKind = kind;
-    this.bitrate = bitrate;
-    stream.getVideoTracks()[0]?.addEventListener('ended', () => {
-      // O usuário clicou em "Parar compartilhamento" na barra do navegador.
-      if (this.local === stream) void this.stopBroadcast();
-    });
+    if (this.locals.has(kind)) await this.stopBroadcast(kind);
+    this.locals.set(kind, { stream, announced: stream, bitrate, startedAt: Date.now() });
+    this.watchEnded(stream, kind);
     try {
-      await this.publishStream();
+      await this.publishStream(kind);
     } catch (e) {
-      await this.stopBroadcast();
+      await this.stopBroadcast(kind);
       throw e;
     }
-    for (const id of this.members) if (id !== this.uid) this.attachLocal(this.ensurePeer(id));
+    for (const id of this.members) if (id !== this.uid) this.attachLocal(this.ensurePeer(id), kind);
     this.emit();
   }
 
-  async stopBroadcast() {
-    const stream = this.local;
-    if (!stream) return;
-    this.local = null;
-    this.localKind = null;
-    for (const peer of this.peers.values()) this.detachLocal(peer);
-    stream.getTracks().forEach((t) => t.stop());
+  // O usuário clicou em "Parar compartilhamento" na barra do navegador.
+  private watchEnded(stream: MediaStream, kind: StreamKind) {
+    stream.getVideoTracks()[0]?.addEventListener('ended', () => {
+      if (this.locals.get(kind)?.stream === stream) void this.stopBroadcast(kind);
+    });
+  }
+
+  // Troca a fonte (outra tela ou janela) sem encerrar a live: só a faixa enviada muda, então quem
+  // assiste continua no mesmo player, sem renegociar o vídeo.
+  async replaceSource(kind: StreamKind, stream: MediaStream, bitrate: number) {
+    const live = this.locals.get(kind);
+    if (!live) return this.startBroadcast(stream, kind, bitrate);
+    const old = live.stream;
+    live.stream = stream;
+    this.watchEnded(stream, kind);
+    const next = { video: stream.getVideoTracks()[0] || null, audio: stream.getAudioTracks()[0] || null };
+    for (const peer of this.peers.values()) {
+      const transceivers = peer.transceivers[kind] || [];
+      for (const trackKind of ['video', 'audio'] as const) {
+        const existing = transceivers.find(
+          (t) => t.receiver.track.kind === trackKind && t.currentDirection !== 'stopped',
+        );
+        const track = next[trackKind];
+        if (existing) await existing.sender.replaceTrack(track).catch(() => {});
+        else if (track)
+          transceivers.push(
+            peer.pc.addTransceiver(track, { direction: 'sendonly', streams: [live.announced] }),
+          );
+      }
+      peer.transceivers[kind] = transceivers;
+    }
+    old.getTracks().forEach((t) => t.stop());
     this.emit();
-    await onDisconnect(this.streamRef)
-      .cancel()
-      .catch(() => {});
-    await remove(this.streamRef).catch(() => {});
+  }
+
+  async stopBroadcast(kind?: StreamKind) {
+    const kinds = kind ? [kind] : [...this.locals.keys()];
+    for (const k of kinds) {
+      const live = this.locals.get(k);
+      if (!live) continue;
+      this.locals.delete(k);
+      for (const peer of this.peers.values()) this.detachLocal(peer, k);
+      live.stream.getTracks().forEach((t) => t.stop());
+      this.emit();
+      await remove(this.path(`streams/${this.uid}/${k}`)).catch(() => {});
+    }
   }
 
   async leave() {
@@ -497,6 +558,9 @@ export class LiveRoom {
     this.unsubs.forEach((u) => u());
     this.unsubs = [];
     for (const id of [...this.peers.keys()]) this.closePeer(id);
+    await onDisconnect(this.streamsRef)
+      .cancel()
+      .catch(() => {});
     await onDisconnect(this.memberRef)
       .cancel()
       .catch(() => {});
@@ -509,7 +573,7 @@ export class LiveRoom {
   dispose() {
     this.closed = true;
     this.unsubs.forEach((u) => u());
-    this.local?.getTracks().forEach((t) => t.stop());
+    for (const live of this.locals.values()) live.stream.getTracks().forEach((t) => t.stop());
     for (const peer of this.peers.values()) peer.pc.close();
     this.peers.clear();
   }
