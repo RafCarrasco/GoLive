@@ -245,3 +245,5 @@
 .sidebar-participant:disabled{opacity:.65}
 .status-feedback{display:none}
 .status-feedback.is-busy{display:block}
+
+.status-feedback.is-error{display:block;border-color:#b66a78;color:#ffccd4;background:#3b2031}
