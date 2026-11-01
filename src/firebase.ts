@@ -1,0 +1,4 @@
+import{initializeApp}from'firebase/app';import{getAuth,signInAnonymously}from'firebase/auth';import{getDatabase}from'firebase/database';
+export const configured=Boolean(import.meta.env.VITE_FIREBASE_API_KEY&&import.meta.env.VITE_FIREBASE_DATABASE_URL&&import.meta.env.VITE_FIREBASE_APP_ID);
+const app=initializeApp({apiKey:import.meta.env.VITE_FIREBASE_API_KEY||'unset',authDomain:import.meta.env.VITE_FIREBASE_AUTH_DOMAIN||'golive-ad118.firebaseapp.com',databaseURL:import.meta.env.VITE_FIREBASE_DATABASE_URL||'https://invalid.firebaseio.com',projectId:'golive-ad118',appId:import.meta.env.VITE_FIREBASE_APP_ID||'unset'});
+export const db=getDatabase(app);export const login=async()=>{const {user}=await signInAnonymously(getAuth(app));return user.uid};
