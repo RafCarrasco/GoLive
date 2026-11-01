@@ -35,21 +35,21 @@
     "community": {
       "profiles": {
         "$uid": {
-          ".write": "auth != null && auth.uid === $uid && newData.exists()",
+          ".write": "auth != null && root.child('community/approved').child(auth.uid).val() === true && auth.uid === $uid && newData.exists()",
           ".validate": "newData.hasChildren(['displayName','createdAt','updatedAt']) && newData.child('displayName').isString() && newData.child('displayName').val().length >= 2 && newData.child('displayName').val().length <= 32 && newData.child('createdAt').isNumber() && newData.child('updatedAt').isNumber()"
         },
         ".read": "auth != null && root.child('community/approved').child(auth.uid).val() === true"
       },
       "roles": {
         "$uid": {
-          ".write": "auth != null && root.child('community/roles').child(auth.uid).val() === 'owner' && ($uid !== auth.uid || newData.val() === 'owner')",
+          ".write": "auth != null && root.child('community/approved').child(auth.uid).val() === true && root.child('community/roles').child(auth.uid).val() === 'owner' && ($uid !== auth.uid || newData.val() === 'owner')",
           ".validate": "newData.val() === 'admin' || newData.val() === 'member' || newData.val() === 'owner'"
         },
         ".read": "auth != null && root.child('community/approved').child(auth.uid).val() === true"
       },
       "channels": {
         "$channel": {
-          ".write": "auth != null && (root.child('community/roles').child(auth.uid).val() === 'owner' || root.child('community/roles').child(auth.uid).val() === 'admin') && $channel !== 'geral' && $channel !== 'competitivo'",
+          ".write": "auth != null && root.child('community/approved').child(auth.uid).val() === true && (root.child('community/roles').child(auth.uid).val() === 'owner' || root.child('community/roles').child(auth.uid).val() === 'admin') && $channel !== 'geral' && $channel !== 'competitivo'",
           ".validate": "newData.hasChildren(['name','description','createdBy','createdAt','visibility','enabled']) && newData.child('name').isString() && newData.child('name').val().length >= 2 && newData.child('name').val().length <= 32 && newData.child('description').isString() && newData.child('enabled').isBoolean() && newData.child('visibility').val() === 'public' && newData.child('createdAt').isNumber()"
         },
         ".read": "auth != null && root.child('community/approved').child(auth.uid).val() === true"
@@ -57,7 +57,7 @@
       "approved": {
         ".read": "auth != null && root.child('community/roles').child(auth.uid).val() === 'owner'",
         "$uid": {
-          ".write": "auth != null && root.child('community/roles').child(auth.uid).val() === 'owner'",
+          ".write": "auth != null && root.child('community/approved').child(auth.uid).val() === true && root.child('community/roles').child(auth.uid).val() === 'owner'",
           ".validate": "newData.isBoolean()",
           ".read": "auth != null && auth.uid === $uid"
         }
@@ -65,7 +65,7 @@
       "requests": {
         ".read": "auth != null && root.child('community/roles').child(auth.uid).val() === 'owner'",
         "$uid": {
-          ".write": "auth != null && auth.uid === $uid && auth.token.email === newData.child('email').val()",
+          ".write": "auth != null && auth.uid === $uid && auth.token.email === newData.child('email').val() && auth.token.firebase.sign_in_provider !== 'anonymous'",
           ".validate": "newData.hasChildren(['email','createdAt'])"
         }
       }
