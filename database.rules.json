@@ -2,8 +2,8 @@
   "rules": {
     "rooms": {
       "$room": {
-        ".read": "auth != null && ($room === 'geral' || $room === 'competitivo')",
-        ".write": "auth != null && ($room === 'geral' || $room === 'competitivo') && !data.exists() && newData.exists() && newData.child('host').val() === auth.uid && newData.child('members').child(auth.uid).exists()",
+        ".read": "auth != null && ($room === 'geral' || $room === 'competitivo' || root.child('community/channels').child($room).child('enabled').val() === true)",
+        ".write": "auth != null && !data.exists() && newData.exists() && newData.child('host').val() === auth.uid && newData.child('members').child(auth.uid).exists() && ($room === 'geral' || $room === 'competitivo' || root.child('community/channels').child($room).child('enabled').val() === true)",
         ".validate": "newData.child('host').isString()",
         "live": {
           ".write": "auth != null && data.parent().child('host').val() === auth.uid",
@@ -29,6 +29,27 @@
             ".write": "auth != null && auth.uid === $uid && data.parent().parent().child('members').child(auth.uid).exists()",
             ".validate": "newData.isBoolean()"
           }
+        }
+      }
+    },
+    "community": {
+      ".read": "auth != null",
+      "profiles": {
+        "$uid": {
+          ".write": "auth != null && auth.uid === $uid && newData.exists()",
+          ".validate": "newData.hasChildren(['displayName','createdAt','updatedAt']) && newData.child('displayName').isString() && newData.child('displayName').val().length >= 2 && newData.child('displayName').val().length <= 32 && newData.child('createdAt').isNumber() && newData.child('updatedAt').isNumber()"
+        }
+      },
+      "roles": {
+        "$uid": {
+          ".write": "auth != null && root.child('community/roles').child(auth.uid).val() === 'owner' && ($uid !== auth.uid || newData.val() === 'owner')",
+          ".validate": "newData.val() === 'admin' || newData.val() === 'member' || newData.val() === 'owner'"
+        }
+      },
+      "channels": {
+        "$channel": {
+          ".write": "auth != null && (root.child('community/roles').child(auth.uid).val() === 'owner' || root.child('community/roles').child(auth.uid).val() === 'admin') && $channel !== 'geral' && $channel !== 'competitivo'",
+          ".validate": "newData.hasChildren(['name','description','createdBy','createdAt','visibility','enabled']) && newData.child('name').isString() && newData.child('name').val().length >= 2 && newData.child('name').val().length <= 32 && newData.child('description').isString() && newData.child('enabled').isBoolean() && newData.child('visibility').val() === 'public' && newData.child('createdAt').isNumber()"
         }
       }
     }
