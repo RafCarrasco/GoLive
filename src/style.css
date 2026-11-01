@@ -141,3 +141,34 @@
 .status-feedback.is-busy{border-color:#6a62c6;background:#252448}
 @media(max-width:900px){.community-shell .layout{grid-template-columns:1fr}.community-shell>main{overflow:auto}.community-shell aside{overflow:visible}.community-shell{overflow:auto}.community-sidebar{width:190px;flex-basis:190px}}
 @media(max-width:650px){.community-shell{flex-direction:column;overflow:visible}.community-sidebar{width:100%;flex-basis:auto;max-height:none}.community-shell>main{overflow:visible;padding:18px}.community-shell .layout{display:flex;flex-direction:column}.multiview-grid{min-height:240px}.page{height:auto;overflow:auto}}
+
+
+/* Nimbo community navigation / settings workspace */
+.server-heading{display:flex;align-items:center;gap:10px;padding:8px 8px 18px;margin-bottom:12px;border-bottom:1px solid #29354c}
+.server-avatar{display:grid;place-items:center;width:36px;height:36px;border-radius:12px;background:#655bcb;font-size:21px}
+.server-heading strong{font-size:16px}.server-private{margin-left:auto;font-size:9px;letter-spacing:.8px;color:#96a4bf}
+.sidebar-section-toggle{display:flex;align-items:center;gap:9px;background:transparent;border:0;color:#99a9c2;font-size:11px;font-weight:750;letter-spacing:.7px;padding:11px 8px;text-align:left}
+.sidebar-section-toggle span:last-child{margin-left:auto;color:#7889a8}
+.sidebar-channel-group{display:flex;flex-direction:column;gap:4px}
+.community-sidebar .sidebar-channel{display:flex;align-items:center;gap:10px;padding:10px 11px;font-size:13px}
+.channel-symbol{font-size:17px;color:#95a3be}.channel-name{min-width:0;overflow:hidden;text-overflow:ellipsis;flex:1}
+.online-indicator{font-size:11px;color:#51c7a0}
+.sidebar-room-members{display:flex;flex-direction:column;gap:4px;padding:2px 12px 12px 33px;font-size:11px;color:#93a7c2}
+.sidebar-room-members span:first-child{color:#6fdfb0}
+.sidebar-divider{height:1px;background:#27344b;margin:14px 5px}
+.community-sidebar .admin-nav-button{width:100%;padding:12px;text-align:left;background:#202c43;font-size:12px;font-weight:700;border:1px solid #32425e}
+.community-sidebar .admin-nav-button.active{background:#3f376d;border-color:#8f80fa}
+.community-shell>main:has(.admin-page){overflow:auto}
+.community-shell>main:has(.admin-page)>.empty-home,.community-shell>main:has(.admin-page)>.layout{display:none}
+.admin-page{flex:1;max-height:none;overflow:auto;margin:0;background:transparent;border:0;padding:14px 10px}
+.admin-page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:10px 0 22px;border-bottom:1px solid #2f3c53}
+.admin-page-head h2{font-size:27px;margin:7px 0}.admin-page-head p{color:#a5b3cc;font-size:13px;margin:0}
+.admin-eyebrow{color:#a29aff;font-size:10px;letter-spacing:2px;font-weight:800}
+.admin-tabs{display:flex;gap:8px;padding:22px 0 18px}
+.admin-tabs button{background:#1b2840;border:1px solid #2d3b58;padding:11px 17px;font-size:13px}
+.admin-tabs button.active{background:#5d56ca;border-color:#9286ed}
+.admin-grid{display:block}.admin-hidden{display:none}
+.admin-grid>div:not(.admin-hidden){background:#161f32;border:1px solid #31405a;border-radius:14px;padding:20px}
+.admin-grid h3{font-size:17px;margin:0 0 18px}
+.admin-entry{min-height:48px;font-size:13px}
+@media(max-width:650px){.admin-page-head{flex-direction:column}.admin-tabs{flex-wrap:wrap}.server-heading{margin-bottom:2px}}
