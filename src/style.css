@@ -35,3 +35,15 @@
 .screen:fullscreen video{width:100%;height:100%;object-fit:contain}
 .screen:fullscreen .overlay{pointer-events:none}
 @media(max-width:650px){.controls{gap:8px;flex-wrap:wrap}.viewer-tools input[type=range]{width:68px}}
+
+
+/* Polished streaming controls */
+.viewer-tools{display:flex;align-items:center;gap:10px;min-width:0}
+.viewer-tools .control-icon{display:grid;place-items:center;width:38px;height:36px;min-width:38px;padding:0;background:#1f2b44;border:1px solid #364562;border-radius:10px;color:#e5eaff;transition:background .15s,border-color .15s}
+.viewer-tools .control-icon:hover{background:#334364;border-color:#8278ec}
+.viewer-tools input[type=range]{appearance:none;-webkit-appearance:none;width:112px;height:6px;padding:0;margin:0;border:0;border-radius:99px;cursor:pointer;outline:none}
+.viewer-tools input[type=range]::-webkit-slider-thumb{appearance:none;width:14px;height:14px;border-radius:50%;background:#aaa2ff;border:2px solid #dedaff;box-shadow:0 0 0 2px #171d32}
+.viewer-tools input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:#aaa2ff;border:2px solid #dedaff}
+.viewer-tools input[type=range]:focus-visible{outline:2px solid #b2aaff;outline-offset:5px}
+.volume-number{min-width:37px;font-size:12px;font-variant-numeric:tabular-nums;color:#c5cee0;text-align:right}
+@media(max-width:850px){.viewer-tools input[type=range]{width:86px}}
