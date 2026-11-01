@@ -223,6 +223,7 @@ function Community({ uid }: { uid: string }) {
             visible={visible}
             setVisible={setVisible}
             nameOf={nameOf}
+            onRetry={live.retry}
           />
         ) : (
           <div className="home">

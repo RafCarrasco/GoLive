@@ -110,6 +110,18 @@ export function useLiveRoom(uid: string, handlers: Handlers) {
     await current.current?.stopBroadcast();
   }, []);
 
+  const retry = useCallback((id: string) => current.current?.retry(id), []);
+
+  // Suporte: rodar nimboDebug() no console mostra o estado de cada conexão P2P.
+  useEffect(() => {
+    const w = window as unknown as { nimboDebug?: () => Promise<unknown> };
+    w.nimboDebug = async () => {
+      const result = (await current.current?.diagnostics()) || [];
+      console.table(result);
+      return result;
+    };
+  }, []);
+
   useEffect(() => {
     if (typeof BroadcastChannel === 'undefined') return;
     const bc = new BroadcastChannel('nimbo-session');
@@ -133,7 +145,7 @@ export function useLiveRoom(uid: string, handlers: Handlers) {
     };
   }, [uid]);
 
-  return { snapshot, busy, join, leave, start, stop };
+  return { snapshot, busy, join, leave, start, stop, retry };
 }
 
 function keepDevParams(prefix = '?') {

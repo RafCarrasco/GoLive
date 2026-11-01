@@ -42,6 +42,7 @@ export function Stage({
   visible,
   setVisible,
   nameOf,
+  onRetry,
 }: {
   uid: string;
   channelName: string;
@@ -49,6 +50,7 @@ export function Stage({
   visible: string[];
   setVisible: (update: (ids: string[]) => string[]) => void;
   nameOf: (id: string) => string;
+  onRetry: (id: string) => void;
 }) {
   const [layout, setLayout] = useState<'grid' | 'focus'>('grid');
   const [focused, setFocused] = useState('');
@@ -83,7 +85,7 @@ export function Stage({
   const tileFor = (id: string, compact = false) => {
     const own = id === uid;
     const stream = own ? live.local : live.remote[id] || null;
-    const state: TileState = stream ? 'playing' : live.failed.includes(id) ? 'failed' : 'connecting';
+    const state: TileState = live.failed.includes(id) ? 'failed' : stream ? 'playing' : 'connecting';
     const pref = audio[id] || { volume: 100, muted: false };
     return (
       <LiveTile
@@ -99,6 +101,7 @@ export function Stage({
         onMute={(muted) => setPref(id, { muted })}
         onClose={() => setVisible((ids) => ids.filter((x) => x !== id))}
         onFocus={() => setFocused(id)}
+        onRetry={() => onRetry(id)}
         compact={compact}
         style={compact ? undefined : { width: fit.width, height: fit.height }}
       />

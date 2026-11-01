@@ -32,6 +32,17 @@ export type LiveSnapshot = {
   failed: string[];
 };
 
+export type PeerDiagnostics = {
+  peer: string;
+  connection: RTCPeerConnectionState;
+  ice: RTCIceConnectionState;
+  signaling: RTCSignalingState;
+  route: string;
+  videoBytesIn: number;
+  videoBytesOut: number;
+  framesIn: number;
+};
+
 type Peer = {
   pc: RTCPeerConnection;
   polite: boolean;
@@ -42,8 +53,26 @@ type Peer = {
   queue: Promise<void>;
 };
 
+// TURN é opcional (VITE_TURN_URLS separado por vírgula, VITE_TURN_USERNAME, VITE_TURN_CREDENTIAL).
+// Sem ele, redes com NAT restritivo não conseguem conexão direta.
+const turnUrls = (import.meta.env.VITE_TURN_URLS || '')
+  .split(',')
+  .map((u: string) => u.trim())
+  .filter(Boolean);
 const ICE: RTCConfiguration = {
-  iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }],
+  iceServers: [
+    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+    { urls: 'stun:stun.cloudflare.com:3478' },
+    ...(turnUrls.length
+      ? [
+          {
+            urls: turnUrls,
+            username: import.meta.env.VITE_TURN_USERNAME,
+            credential: import.meta.env.VITE_TURN_CREDENTIAL,
+          },
+        ]
+      : []),
+  ],
 };
 
 export const MAX_MEMBERS = 20;
@@ -55,6 +84,8 @@ export class LiveRoom {
   private remote: Record<string, MediaStream> = {};
   private failed = new Set<string>();
   private members: string[] = [];
+  private membersLoaded = false;
+  private pendingInbox: Record<string, Record<string, Signal>> | null = null;
   private broadcasts: Record<string, Broadcast> = {};
   private local: MediaStream | null = null;
   private localKind: StreamKind | null = null;
@@ -175,11 +206,15 @@ export class LiveRoom {
 
   private onMembers(ids: string[]) {
     this.members = ids;
+    const firstLoad = !this.membersLoaded;
+    this.membersLoaded = true;
     const present = new Set(ids);
     for (const id of [...this.peers.keys()]) if (!present.has(id)) this.closePeer(id);
     for (const id of [...this.failed]) if (!present.has(id)) this.failed.delete(id);
     // Quem transmite inicia a conexão com quem chega; quem só assiste espera a oferta.
     if (this.local) for (const id of ids) if (id !== this.uid) this.ensurePeer(id);
+    // Sinais que chegaram antes da lista de membros ficam guardados até aqui.
+    if (firstLoad && this.pendingInbox) this.onInbox(this.pendingInbox);
     this.emit();
   }
 
@@ -194,6 +229,11 @@ export class LiveRoom {
   }
 
   private onInbox(data: Record<string, Record<string, Signal>> | null) {
+    if (!this.membersLoaded) {
+      this.pendingInbox = data;
+      return;
+    }
+    this.pendingInbox = null;
     for (const [sender, msgs] of Object.entries(data || {}))
       for (const [id, msg] of Object.entries(msgs || {})) {
         const key = sender + '/' + id;
@@ -255,9 +295,11 @@ export class LiveRoom {
         void this.send(id, { type: 'ice', candidate: candidate.toJSON() }).catch(() => {});
     };
     pc.oniceconnectionstatechange = () => {
+      console.info('[nimbo] ICE', id.slice(0, 5), pc.iceConnectionState);
       if (pc.iceConnectionState === 'failed') pc.restartIce();
     };
     pc.onconnectionstatechange = () => {
+      console.info('[nimbo] conexão', id.slice(0, 5), pc.connectionState);
       if (pc.connectionState === 'connected') this.failed.delete(id);
       else if (pc.connectionState === 'failed') this.failed.add(id);
       else return;
@@ -332,6 +374,52 @@ export class LiveRoom {
     peer.pc.close();
     this.peers.delete(id);
     delete this.remote[id];
+  }
+
+  // Pede uma nova rota de rede para a conexão com este participante (botão "Tentar de novo").
+  retry(id: string) {
+    const peer = this.peers.get(id);
+    if (!peer) return;
+    this.failed.delete(id);
+    peer.pc.restartIce();
+    this.emit();
+  }
+
+  // Para suporte: no console do navegador, rode nimboDebug().
+  async diagnostics(): Promise<PeerDiagnostics[]> {
+    return Promise.all(
+      [...this.peers.entries()].map(async ([id, { pc }]) => {
+        const stats = await pc.getStats();
+        const byId = new Map<string, Record<string, unknown>>();
+        stats.forEach((r) => byId.set(r.id, r as Record<string, unknown>));
+        let route = 'nenhuma';
+        let videoBytesIn = 0;
+        let videoBytesOut = 0;
+        let framesIn = 0;
+        stats.forEach((r: Record<string, unknown>) => {
+          if (r.type === 'candidate-pair' && r.state === 'succeeded' && r.nominated) {
+            const local = byId.get(r.localCandidateId as string);
+            const remote = byId.get(r.remoteCandidateId as string);
+            route = `${local?.candidateType}/${local?.protocol} -> ${remote?.candidateType}`;
+          }
+          if (r.kind === 'video' && r.type === 'inbound-rtp') {
+            videoBytesIn += Number(r.bytesReceived || 0);
+            framesIn += Number(r.framesDecoded || 0);
+          }
+          if (r.kind === 'video' && r.type === 'outbound-rtp') videoBytesOut += Number(r.bytesSent || 0);
+        });
+        return {
+          peer: id.slice(0, 5),
+          connection: pc.connectionState,
+          ice: pc.iceConnectionState,
+          signaling: pc.signalingState,
+          route,
+          videoBytesIn,
+          videoBytesOut,
+          framesIn,
+        };
+      }),
+    );
   }
 
   async startBroadcast(stream: MediaStream, kind: StreamKind, bitrate: number) {

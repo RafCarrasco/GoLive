@@ -1,5 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
-import { LoaderCircle, Maximize, Minimize, Video, Volume1, Volume2, VolumeX, WifiOff, X } from 'lucide-react';
+import {
+  LoaderCircle,
+  Maximize,
+  Minimize,
+  RotateCw,
+  Video,
+  Volume1,
+  Volume2,
+  VolumeX,
+  WifiOff,
+  X,
+} from 'lucide-react';
 
 export type TileState = 'playing' | 'connecting' | 'failed';
 
@@ -15,6 +26,7 @@ export function LiveTile({
   onMute,
   onClose,
   onFocus,
+  onRetry,
   compact,
   style,
 }: {
@@ -29,6 +41,7 @@ export function LiveTile({
   onMute: (value: boolean) => void;
   onClose: () => void;
   onFocus?: () => void;
+  onRetry?: () => void;
   compact?: boolean;
   style?: React.CSSProperties;
 }) {
@@ -36,6 +49,9 @@ export function LiveTile({
   const video = useRef<HTMLVideoElement>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [hasAudio, setHasAudio] = useState(false);
+  // Ter um stream não basta: só consideramos a live no ar quando chegam quadros de vídeo.
+  const [hasFrames, setHasFrames] = useState(false);
+  const [slow, setSlow] = useState(false);
   // A própria prévia nunca toca áudio: evita que o som capturado volte para a captura (eco).
   const silent = own || muted;
 
@@ -45,9 +61,20 @@ export function LiveTile({
     v.srcObject = stream;
     const sync = () => setHasAudio(Boolean(stream?.getAudioTracks().length));
     sync();
+    const frames = () => setHasFrames(v.videoWidth > 0 && v.readyState >= 2);
+    frames();
+    v.addEventListener('loadeddata', frames);
+    v.addEventListener('resize', frames);
+    v.addEventListener('emptied', frames);
+    setSlow(false);
+    const timer = setTimeout(() => setSlow(true), 15000);
     stream?.addEventListener('addtrack', sync);
     stream?.addEventListener('removetrack', sync);
     return () => {
+      clearTimeout(timer);
+      v.removeEventListener('loadeddata', frames);
+      v.removeEventListener('resize', frames);
+      v.removeEventListener('emptied', frames);
       stream?.removeEventListener('addtrack', sync);
       stream?.removeEventListener('removetrack', sync);
       v.srcObject = null;
@@ -87,12 +114,21 @@ export function LiveTile({
       onClick={compact ? onFocus : undefined}
     >
       <video ref={video} autoPlay playsInline muted={silent} />
-      {state !== 'playing' && (
+      {(state !== 'playing' || !hasFrames) && (
         <div className="tile-placeholder">
           {state === 'failed' ? <WifiOff size={28} /> : <LoaderCircle size={28} className="spin" />}
           <span>
-            {state === 'failed' ? 'Não foi possível conectar a esta live' : 'Conectando à transmissão…'}
+            {state === 'failed'
+              ? 'Não foi possível conectar a esta live'
+              : slow
+                ? 'A conexão está demorando…'
+                : 'Conectando à transmissão…'}
           </span>
+          {!own && !compact && onRetry && (state === 'failed' || slow) && (
+            <button className="button ghost" onClick={onRetry}>
+              <RotateCw size={15} /> Tentar de novo
+            </button>
+          )}
         </div>
       )}
       <div className="tile-top">
