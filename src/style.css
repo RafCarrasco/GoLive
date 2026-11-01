@@ -111,3 +111,33 @@
 .auth-page .pending-note{width:100%;display:flex;flex-direction:column;gap:8px;padding:18px;text-align:left;background:#202b45;border:1px solid #49567a;border-radius:12px;color:#dbe5fa}
 .auth-page .pending-note span{font-size:13px;color:#aab8d0}
 .auth-page .status{margin:4px 0 0;max-width:100%;overflow-wrap:anywhere;color:#b4c5e8}
+
+
+/* Nimbo UX refresh: one navigation source and predictable responsive layout */
+.community-shell{min-height:0;flex:1;display:flex;width:100%;overflow:hidden}
+.community-shell>main{max-width:none;width:100%;min-width:0;margin:0;padding:22px 24px 12px;display:flex;flex-direction:column;overflow:hidden}
+.community-sidebar{width:236px;flex:0 0 236px;background:#111827;border-right:1px solid #28344a;padding:18px 12px;gap:8px}
+.sidebar-channel{font-size:13px;border:1px solid transparent;transition:background .15s ease}
+.sidebar-channel:hover{background:#26314b}
+.sidebar-channel.active{background:#33305b;border-color:#6e64ba}
+.sidebar-channel:disabled{opacity:.65}
+.empty-home{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:16px;padding:30px}
+.empty-home h1{font-size:clamp(26px,3vw,40px);letter-spacing:-.8px}
+.empty-home p{margin:0;max-width:440px;color:#abbad0;line-height:1.6;font-size:15px}
+.home-symbol{display:grid;place-items:center;background:linear-gradient(135deg,#8678ff,#5143aa);height:80px;width:80px;border-radius:24px;font-size:34px}
+.home-note{font-size:12px;color:#879bb5}
+.community-shell>main:has(.layout){padding:16px 20px 8px}
+.community-shell .layout{flex:1;min-height:0;min-width:0;grid-template-columns:minmax(0,1fr) 278px;align-items:stretch}
+.community-shell .stage{min-height:0;min-width:0}
+.multiview-grid{flex:1;min-height:0;position:relative;overflow:auto;align-content:center}
+.multiview-grid>.overlay{position:relative;grid-column:1/-1;inset:auto;min-height:200px;display:grid;text-align:center;padding:24px}
+.controls{gap:10px;flex-wrap:wrap;justify-content:space-between}
+.controls small{flex:1;min-width:100px;text-align:center}
+.layout-toolbar{flex-wrap:wrap}
+.community-shell aside{min-height:0;overflow:auto}
+.community-shell aside section{padding:14px}
+.community-shell aside .streams-panel{flex:0 0 auto}
+.status-feedback{width:100%;margin:8px 0 0;padding:9px 14px;border:1px solid #33425b;border-radius:9px;text-align:left;color:#c7d6f4;background:#17243b;font-size:12px;flex-shrink:0}
+.status-feedback.is-busy{border-color:#6a62c6;background:#252448}
+@media(max-width:900px){.community-shell .layout{grid-template-columns:1fr}.community-shell>main{overflow:auto}.community-shell aside{overflow:visible}.community-shell{overflow:auto}.community-sidebar{width:190px;flex-basis:190px}}
+@media(max-width:650px){.community-shell{flex-direction:column;overflow:visible}.community-sidebar{width:100%;flex-basis:auto;max-height:none}.community-shell>main{overflow:visible;padding:18px}.community-shell .layout{display:flex;flex-direction:column}.multiview-grid{min-height:240px}.page{height:auto;overflow:auto}}
