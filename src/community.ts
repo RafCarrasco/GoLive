@@ -63,9 +63,18 @@ export const watchProfiles = (cb: (profiles: Record<string, Profile>) => void) =
   onValue(ref(db, 'community/profiles'), (s) => cb(s.val() || {}));
 export const watchRoles = (cb: (roles: Record<string, CommunityRole>) => void) =>
   onValue(ref(db, 'community/roles'), (s) => cb(s.val() || {}));
+export const NICKNAME_MIN = 3;
+export const NICKNAME_MAX = 24;
+export function nicknameError(name: string) {
+  const length = name.trim().length;
+  return length < NICKNAME_MIN || length > NICKNAME_MAX
+    ? `Use de ${NICKNAME_MIN} a ${NICKNAME_MAX} caracteres.`
+    : '';
+}
 export async function saveProfile(uid: string, name: string) {
-  const displayName = name.trim().slice(0, 32);
-  if (displayName.length < 2) throw Error('Informe um nome de 2 a 32 caracteres');
+  const displayName = name.trim();
+  const invalid = nicknameError(displayName);
+  if (invalid) throw Error(invalid);
   const p = ref(db, 'community/profiles/' + uid);
   const old = await get(p);
   await set(p, { displayName, createdAt: old.val()?.createdAt || Date.now(), updatedAt: Date.now() });
@@ -97,9 +106,11 @@ export async function editChannel(
 ) {
   await update(ref(db, 'community/channels/' + id), fields);
 }
+export const isSystemChannel = (id: string) => id in SYSTEM_CHANNELS;
 export async function deleteChannel(id: string) {
-  if (id === 'geral' || id === 'competitivo') throw Error('Canais padrão não podem ser excluídos');
+  if (isSystemChannel(id)) throw Error('Canais padrão não podem ser excluídos');
   await remove(ref(db, 'community/channels/' + id));
+  await remove(ref(db, 'community/channelAccess/' + id)).catch(() => {});
 }
 export async function assignRole(uid: string, role: CommunityRole) {
   await set(ref(db, 'community/roles/' + uid), role);
@@ -122,3 +133,47 @@ export const setChannelAccess = (id: string, level: AccessLevel) =>
 export function canAccess(level: AccessLevel, role: CommunityRole) {
   return level === 'member' || role === 'owner' || (level === 'admin' && role === 'admin');
 }
+export const isStaff = (role: CommunityRole | undefined) => role === 'owner' || role === 'admin';
+
+// Espelha a regra do banco: o canal precisa liberar o cargo e a categoria também.
+// É só para a interface; quem garante o acesso são as regras do RTDB.
+export function channelAllowed(
+  channelId: string,
+  channel: Channel | undefined,
+  role: CommunityRole,
+  channelAccess: Record<string, AccessLevel>,
+  categoryAccess: Record<string, AccessLevel>,
+) {
+  if (!channel?.enabled) return false;
+  return (
+    canAccess(channelAccess[channelId] || 'member', role) &&
+    canAccess(categoryAccess[channel.categoryId || DEFAULT_CATEGORY_ID] || 'member', role)
+  );
+}
+
+export type AccessRequest = { email: string; createdAt: number };
+export const watchApproval = (uid: string, cb: (approved: boolean) => void, onError: (e: Error) => void) =>
+  onValue(ref(db, 'community/approved/' + uid), (s) => cb(s.val() === true), onError);
+export const requestAccess = (uid: string, email: string) =>
+  set(ref(db, 'community/requests/' + uid), { email, createdAt: Date.now() });
+export const watchRequests = (cb: (v: Record<string, AccessRequest>) => void, onError: (e: Error) => void) =>
+  onValue(ref(db, 'community/requests'), (s) => cb(s.val() || {}), onError);
+export const watchApprovedMembers = (cb: (v: Record<string, boolean>) => void, onError: (e: Error) => void) =>
+  onValue(ref(db, 'community/approved'), (s) => cb(s.val() || {}), onError);
+export async function approveMember(uid: string) {
+  await set(ref(db, 'community/approved/' + uid), true);
+  await remove(ref(db, 'community/requests/' + uid)).catch(() => {});
+}
+export const rejectRequest = (uid: string) => remove(ref(db, 'community/requests/' + uid));
+export const revokeMember = (uid: string) => remove(ref(db, 'community/approved/' + uid));
+// Limpa uma sessão abandonada (ex.: navegador fechado antes do onDisconnect ser registrado).
+export async function removeRoomSession(roomId: string, uid: string) {
+  await remove(ref(db, `rooms/${roomId}/streams/${uid}`));
+  await remove(ref(db, `rooms/${roomId}/members/${uid}`));
+}
+
+export const roleLabel: Record<CommunityRole, string> = {
+  owner: 'Proprietário',
+  admin: 'Administrador',
+  member: 'Membro',
+};

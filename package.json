@@ -12,7 +12,8 @@
     "rules:build": "node scripts/build-rules.mjs",
     "test:rules": "firebase emulators:exec --only database --project demo-nimbo \"node --test tests/rules.test.mjs\"",
     "emulators": "firebase emulators:start --only auth,database --project demo-nimbo",
-    "dev:local": "vite --mode emulator"
+    "dev:local": "vite --mode emulator",
+    "emulator:approve": "node scripts/emulator-approve.mjs"
   },
   "dependencies": {
     "firebase": "^11.10.0",

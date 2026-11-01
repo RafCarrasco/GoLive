@@ -5,12 +5,18 @@ import { after, before, beforeEach, describe, test } from 'node:test';
 import { assertFails, assertSucceeds, initializeTestEnvironment } from '@firebase/rules-unit-testing';
 import { get, ref, remove, set, update } from 'firebase/database';
 
-const rules = readFileSync(process.env.RULES_FILE || new URL('../database.rules.json', import.meta.url), 'utf8');
+const rules = readFileSync(
+  process.env.RULES_FILE || new URL('../database.rules.json', import.meta.url),
+  'utf8',
+);
 let env;
 
 const as = (uid, provider = 'google.com') =>
   env
-    .authenticatedContext(uid, { email: uid + '@example.com', firebase: { sign_in_provider: provider, identities: {} } })
+    .authenticatedContext(uid, {
+      email: uid + '@example.com',
+      firebase: { sign_in_provider: provider, identities: {} },
+    })
     .database();
 const owner = () => as('owner');
 const admin = () => as('admin');
@@ -37,7 +43,14 @@ beforeEach(async () => {
         requests: { pending: { email: 'pending@example.com', createdAt: 1 } },
         categories: { vipcat: { name: 'VIP', createdAt: 1, createdBy: 'owner', order: 1 } },
         channels: {
-          staff: { name: 'Staff', description: '', createdBy: 'owner', createdAt: 1, visibility: 'public', enabled: true },
+          staff: {
+            name: 'Staff',
+            description: '',
+            createdBy: 'owner',
+            createdAt: 1,
+            visibility: 'public',
+            enabled: true,
+          },
           vip: {
             name: 'VIP',
             description: '',
@@ -47,7 +60,14 @@ beforeEach(async () => {
             visibility: 'public',
             enabled: true,
           },
-          off: { name: 'Off', description: '', createdBy: 'owner', createdAt: 1, visibility: 'public', enabled: false },
+          off: {
+            name: 'Off',
+            description: '',
+            createdBy: 'owner',
+            createdAt: 1,
+            visibility: 'public',
+            enabled: false,
+          },
         },
         channelAccess: { staff: 'admin' },
         categoryAccess: { vipcat: 'owner' },
@@ -102,10 +122,18 @@ describe('solicitações', () => {
     await assertSucceeds(
       set(ref(pending(), 'community/requests/pending'), { email: 'pending@example.com', createdAt: 2 }),
     );
-    await assertFails(set(ref(pending(), 'community/requests/pending'), { email: 'outro@example.com', createdAt: 2 }));
-    await assertFails(set(ref(pending(), 'community/requests/member'), { email: 'pending@example.com', createdAt: 2 }));
     await assertFails(
-      set(ref(pending(), 'community/requests/pending'), { email: 'pending@example.com', createdAt: 2, role: 'owner' }),
+      set(ref(pending(), 'community/requests/pending'), { email: 'outro@example.com', createdAt: 2 }),
+    );
+    await assertFails(
+      set(ref(pending(), 'community/requests/member'), { email: 'pending@example.com', createdAt: 2 }),
+    );
+    await assertFails(
+      set(ref(pending(), 'community/requests/pending'), {
+        email: 'pending@example.com',
+        createdAt: 2,
+        role: 'owner',
+      }),
     );
   });
   test('somente o proprietário lê e remove solicitações', async () => {
@@ -145,7 +173,14 @@ describe('perfis', () => {
 });
 
 describe('canais e categorias', () => {
-  const channel = { name: 'Novo', description: '', createdBy: 'admin', createdAt: 1, visibility: 'public', enabled: true };
+  const channel = {
+    name: 'Novo',
+    description: '',
+    createdBy: 'admin',
+    createdAt: 1,
+    visibility: 'public',
+    enabled: true,
+  };
   test('membro não cria canal; administrador cria', async () => {
     await assertFails(set(ref(member(), 'community/channels/novo'), channel));
     await assertSucceeds(set(ref(admin(), 'community/channels/novo'), channel));
@@ -197,7 +232,9 @@ describe('salas', () => {
     await assertSucceeds(get(ref(owner(), 'rooms/vip/members')));
   });
   test('categoria padrão restrita bloqueia canais sem categoria', async () => {
-    await env.withSecurityRulesDisabled((ctx) => set(ref(ctx.database(), 'community/categoryAccess/lives'), 'admin'));
+    await env.withSecurityRulesDisabled((ctx) =>
+      set(ref(ctx.database(), 'community/categoryAccess/lives'), 'admin'),
+    );
     await assertFails(get(ref(member(), 'rooms/geral/members')));
     await assertSucceeds(get(ref(admin(), 'rooms/geral/members')));
   });
@@ -213,7 +250,9 @@ describe('salas', () => {
     await assertFails(set(ref(member(), 'rooms/geral/members/member'), { joinedAt: 1, host: true }));
   });
   test('sair é sempre permitido, mesmo após perder o acesso', async () => {
-    await env.withSecurityRulesDisabled((ctx) => set(ref(ctx.database(), 'community/channelAccess/geral'), 'owner'));
+    await env.withSecurityRulesDisabled((ctx) =>
+      set(ref(ctx.database(), 'community/channelAccess/geral'), 'owner'),
+    );
     await assertSucceeds(remove(ref(member(), 'rooms/geral/members/member')));
   });
   test('administrador remove sessão abandonada; membro não remove outros', async () => {

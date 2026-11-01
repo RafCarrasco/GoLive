@@ -6,3 +6,4 @@ dist
 .DS_Store
 database-debug.log
 *.log
+tsconfig.tsbuildinfo

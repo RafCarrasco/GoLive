@@ -32,14 +32,20 @@ const channelLevel = levelOk("root.child('community/channelAccess').child($room)
 // Canal sem categoria pertence à categoria padrão. O guard evita child(null), que invalida a regra.
 const categoryLevel = or(
   and(`${categoryId}.exists()`, levelOk(`root.child('community/categoryAccess').child(${categoryId}.val())`)),
-  and(`!${categoryId}.exists()`, levelOk(`root.child('community/categoryAccess').child('${DEFAULT_CATEGORY}')`)),
+  and(
+    `!${categoryId}.exists()`,
+    levelOk(`root.child('community/categoryAccess').child('${DEFAULT_CATEGORY}')`),
+  ),
 );
 const canRoom = and(approved, channelExists, channelLevel, categoryLevel);
 
 const member = (uidExpr) => `root.child('rooms').child($room).child('members').child(${uidExpr}).exists()`;
 const accessLevel = "newData.val() === 'member' || newData.val() === 'admin' || newData.val() === 'owner'";
 // Somente o proprietário pode criar, remover ou alterar uma restrição "somente proprietário".
-const accessWrite = and(approvedAdmin, or(isOwner, and("data.val() !== 'owner'", "newData.val() !== 'owner'")));
+const accessWrite = and(
+  approvedAdmin,
+  or(isOwner, and("data.val() !== 'owner'", "newData.val() !== 'owner'")),
+);
 const noOtherFields = { $other: { '.validate': false } };
 const str = (field, min, max) =>
   and(
@@ -92,7 +98,13 @@ const rules = {
             $sender: {
               $message: {
                 '.write': or(
-                  and(canRoom, 'auth.uid === $sender', member('$sender'), member('$recipient'), '!data.exists()'),
+                  and(
+                    canRoom,
+                    'auth.uid === $sender',
+                    member('$sender'),
+                    member('$recipient'),
+                    '!data.exists()',
+                  ),
                   and(google, 'auth.uid === $recipient', '!newData.exists()'),
                 ),
                 '.validate': or(

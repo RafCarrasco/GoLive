@@ -1,1425 +1,281 @@
-import { useEffect, useRef, useState } from 'react';
-import { ref, get, onValue, set, remove, update, onDisconnect, push } from 'firebase/database';
-import { db, configured } from './firebase';
-import { observeUser, signOutAccount, signInGoogle, completeGoogleRedirect } from './session';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  watchChannels,
-  watchProfiles,
-  watchRoles,
-  saveProfile,
+  channelAllowed,
   createChannel,
-  deleteChannel,
-  assignRole,
-  SYSTEM_CHANNELS,
-  watchCategories,
-  createCategory,
-  renameCategory,
-  deleteCategory,
-  editChannel,
-  DEFAULT_CATEGORIES,
-  type Category,
-  type Channel,
-  type Profile,
-  type CommunityRole,
-  type AccessLevel,
-  accessLabel,
-  watchCategoryAccess,
-  watchChannelAccess,
+  isStaff,
+  removeRoomSession,
+  roleLabel,
+  saveProfile,
   setCategoryAccess,
   setChannelAccess,
-  canAccess,
 } from './community';
-type Msg = {
-  type: 'offer' | 'answer' | 'ice';
-  sdp?: RTCSessionDescriptionInit;
-  candidate?: RTCIceCandidateInit;
-};
-type Room = { host: string; live: boolean; members: Record<string, { joinedAt: number }> };
-const iceServers: RTCConfiguration = {
-  iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }],
-};
-const err = (e: unknown) => (e instanceof Error ? e.message : String(e));
-function LiveTile({
-  id,
-  name,
-  source,
-  own,
-  muted,
-  onMute,
-  onClose,
-}: {
-  id: string;
-  name: string;
-  source: MediaStream | null;
-  own: boolean;
-  muted: boolean;
-  onMute: (value: boolean) => void;
-  onClose: () => void;
-}) {
-  const element = useRef<HTMLVideoElement>(null);
-  const [volume, setVolume] = useState(100);
-  useEffect(() => {
-    const v = element.current;
-    if (!v) return;
-    v.srcObject = source;
-    v.volume = volume / 100;
-    v.muted = own || muted;
-    void v.play().catch(() => {});
-    return () => {
-      v.srcObject = null;
-    };
-  }, [source, own, muted]);
-  useEffect(() => {
-    if (element.current) element.current.volume = volume / 100;
-  }, [volume]);
-  return (
-    <section className="live-tile">
-      <div className="live-tile-header">
-        <strong>
-          <span className="ui-icon">▣</span> {name} <span className="live-on-air">AO VIVO</span>
-        </strong>
-        <button title="Fechar visualização" onClick={onClose}>
-          ×
-        </button>
-      </div>
-      <div className="live-player">
-        <video ref={element} autoPlay playsInline muted={own || muted} />
-        <div className="live-player-controls">
-          {!own && (
-            <>
-              <button
-                aria-label={muted ? 'Ativar som' : 'Silenciar'}
-                title={muted ? 'Ativar som' : 'Silenciar'}
-                onClick={() => onMute(!muted)}
-              >
-                {muted ? '◖' : '◗'}
-              </button>
-              <input
-                aria-label={'Volume de ' + name}
-                type="range"
-                min="0"
-                max="100"
-                value={volume}
-                onChange={(e) => setVolume(Number(e.target.value))}
-                style={{ background: `linear-gradient(to right, #9187ff ${volume}%, #46516a ${volume}%)` }}
-              />
-              <span className="player-volume-number">{volume}%</span>
-            </>
-          )}
-          <button
-            aria-label="Tela cheia"
-            title="Tela cheia"
-            onClick={() => {
-              const v = element.current;
-              if (v?.requestFullscreen) void v.requestFullscreen().catch(() => {});
-            }}
-          >
-            ⛶
-          </button>
-        </div>
-      </div>
-    </section>
-  );
-}
+import { useAuth } from './hooks/useAuth';
+import { useCommunity, useRoomsPresence } from './hooks/useCommunity';
+import { useLiveRoom } from './hooks/useLiveRoom';
+import { loadCaptureSettings, saveCaptureSettings, type StreamKind } from './live/capture';
+import { signOutAccount } from './session';
+import { LoadingScreen, LoginScreen, NicknameScreen, PendingScreen } from './components/AuthScreens';
+import { Sidebar } from './components/Sidebar';
+import { UserPanel } from './components/UserPanel';
+import { Stage } from './components/Stage';
+import { AdminPanel } from './components/AdminPanel';
+import { NicknameForm, PermissionModal, StreamSettingsModal } from './components/Modals';
+import { Modal, useDialogs } from './ui/Modal';
+import { useToast } from './ui/Toast';
+
 export default function App() {
-  const [uid, setUid] = useState(''),
-    [approved, setApproved] = useState(false),
-    [authReady, setAuthReady] = useState(false),
-    [email, setEmail] = useState(''),
-    [secret, setSecret] = useState(''),
-    [registering, setRegistering] = useState(false),
-    [accessRequests, setAccessRequests] = useState<Record<string, { email: string; createdAt: number }>>({}),
-    [room, setRoom] = useState(new URLSearchParams(location.search).get('room') || '');
-  const [channels, setChannels] = useState<Record<string, Channel>>(SYSTEM_CHANNELS);
-  const [categories, setCategories] = useState<Record<string, Category>>(DEFAULT_CATEGORIES),
-    [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({}),
-    [categoryInput, setCategoryInput] = useState(''),
-    [selectedCategory, setSelectedCategory] = useState('lives');
-  const [categoryAccess, setCategoryAccessMap] = useState<Record<string, AccessLevel>>({}),
-    [channelAccess, setChannelAccessMap] = useState<Record<string, AccessLevel>>({}),
-    [permissionTarget, setPermissionTarget] = useState<{ kind: 'category' | 'channel'; id: string } | null>(
-      null,
-    );
-  const [profiles, setProfiles] = useState<Record<string, Profile>>({});
-  const [roles, setRoles] = useState<Record<string, CommunityRole>>({});
-  const [displayName, setDisplayName] = useState(''),
-    [newChannel, setNewChannel] = useState(''),
-    [showAdmin, setShowAdmin] = useState(false),
-    [channelsExpanded, setChannelsExpanded] = useState(true),
-    [adminTab, setAdminTab] = useState<'channels' | 'members'>('channels');
-  const [approvedMembers, setApprovedMembers] = useState<Record<string, boolean>>({}),
-    [approvalBusy, setApprovalBusy] = useState<string | null>(null),
-    [approvalNotice, setApprovalNotice] = useState('');
-  const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 4500);
-    return () => clearTimeout(timer);
-  }, [toast]);
+  const auth = useAuth();
+  if (!auth.ready) return <LoadingScreen />;
+  if (!auth.uid) return <LoginScreen error={auth.error} />;
+  if (auth.approved === null) return <LoadingScreen />;
+  if (!auth.approved) return <PendingScreen email={auth.email} />;
+  // key: trocar de conta remonta tudo, sem herdar sala, perfis ou cargos da conta anterior.
+  return <Community key={auth.uid} uid={auth.uid} />;
+}
+
+function Community({ uid }: { uid: string }) {
+  const data = useCommunity();
+  const toast = useToast();
+  const dialogs = useDialogs();
+  const role = data.roles[uid] || 'member';
+  const staff = isStaff(role);
+  const nickname = data.profiles[uid]?.displayName || '';
+
+  const live = useLiveRoom(uid, {
+    onIssue: (message) => toast.info(message),
+    onKicked: (message) => toast.error(message),
+  });
+  const { snapshot } = live;
+  const room = snapshot.room;
+
+  const [visible, setVisible] = useState<string[]>([]);
+  const [adminOpen, setAdminOpen] = useState(false);
+  const [permission, setPermission] = useState<{ kind: 'category' | 'channel'; id: string } | null>(null);
   const [showStreamSettings, setShowStreamSettings] = useState(false);
-  const [showPreferences, setShowPreferences] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [joined, setJoined] = useState(false),
-    [host, setHost] = useState(false),
-    [live, setLive] = useState(false),
-    [count, setCount] = useState(0);
-  const [visibleLives, setVisibleLives] = useState<string[]>([]),
-    [mutedLives, setMutedLives] = useState<Record<string, boolean>>({}),
-    [streamRevision, setStreamRevision] = useState(0),
-    [broadcasts, setBroadcasts] = useState<Record<string, boolean>>({});
-  const remoteStreams = useRef<Record<string, MediaStream>>({});
-  const [captureMode, setCaptureMode] = useState<'screen' | 'window' | 'camera'>('screen');
-  const [roomMembers, setRoomMembers] = useState<string[]>([]);
-  const [roomOverview, setRoomOverview] = useState<
-    Record<string, { members: string[]; streams: Record<string, boolean> }>
-  >({});
-  const [profileReady, setProfileReady] = useState(false),
-    [profileSaving, setProfileSaving] = useState(false);
-  const [broadcastKind, setBroadcastKind] = useState<'screen' | 'camera'>('screen');
-  const [layoutMode, setLayoutMode] = useState<'grid' | 'focus'>('grid'),
-    [focusedLive, setFocusedLive] = useState('');
-  const [status, setStatus] = useState('Pronto para começar'),
-    [quality, setQuality] = useState(1080),
-    [frameRate, setFrameRate] = useState(60),
-    [audioMode, setAudioMode] = useState<'window' | 'system' | 'none'>('system'),
-    [stats, setStats] = useState('');
-  const stream = useRef<MediaStream | null>(null),
-    peers = useRef<Record<string, RTCPeerConnection>>({});
-  const negotiating = useRef<Record<string, Promise<void>>>({});
-  const seen = useRef(new Set<string>()),
-    cleanups = useRef<Array<() => void>>([]),
-    buffers = useRef<Record<string, RTCIceCandidateInit[]>>({});
-  const roomRef = useRef(''),
-    hostRef = useRef(false),
-    uidRef = useRef('');
-  useEffect(() => {
-    if (!uid || !approved) return;
-    const unsubs = [
-      watchChannels(setChannels),
-      watchCategories(setCategories),
-      watchCategoryAccess(setCategoryAccessMap),
-      watchChannelAccess(setChannelAccessMap),
-      watchProfiles(setProfiles),
-      watchRoles(setRoles),
-    ];
-    return () => unsubs.forEach((u) => u());
-  }, [uid, approved]);
-  useEffect(() => {
-    if (!uid) return;
-    const unsub = onValue(
-      ref(db, 'community/approved/' + uid),
-      (s) => setApproved(s.val() === true),
-      (e) => setStatus(err(e)),
-    );
-    return () => unsub();
-  }, [uid]);
-  useEffect(() => {
-    if (!uid || roles[uid] !== 'owner') return;
-    const offRequests = onValue(
-      ref(db, 'community/requests'),
-      (s) => setAccessRequests(s.val() || {}),
-      (e) => setApprovalNotice('Falha ao carregar solicitações: ' + err(e)),
-    );
-    const offApproved = onValue(
-      ref(db, 'community/approved'),
-      (s) => setApprovedMembers(s.val() || {}),
-      (e) => setApprovalNotice('Falha ao carregar aprovações: ' + err(e)),
-    );
-    return () => {
-      offRequests();
-      offApproved();
-    };
-  }, [uid, roles]);
-  useEffect(() => {
-    if (uid && profiles[uid]) {
-      setDisplayName(profiles[uid].displayName);
-      setProfileReady(true);
-    } else if (uid && approved) {
-      setProfileReady(false);
-    }
-  }, [uid, approved, profiles]);
-  useEffect(() => {
-    if (!uid || !approved) return;
-    const off = Object.keys(channels).map((id) =>
-      onValue(
-        ref(db, 'rooms/' + id),
-        (snap) => {
-          const value = snap.val() as {
-            members?: Record<string, unknown>;
-            streams?: Record<string, boolean>;
-          } | null;
-          setRoomOverview((prev) => ({
-            ...prev,
-            [id]: { members: Object.keys(value?.members || {}), streams: value?.streams || {} },
-          }));
-        },
-        () => {},
+  const [showProfile, setShowProfile] = useState(false);
+  const [capture, setCapture] = useState(loadCaptureSettings);
+
+  const allowedChannels = useMemo(
+    () =>
+      Object.keys(data.channels).filter((id) =>
+        channelAllowed(id, data.channels[id], role, data.channelAccess, data.categoryAccess),
       ),
-    );
-    return () => off.forEach((fn) => fn());
-  }, [uid, approved, channels]);
-  useEffect(() => {
-    if (!configured) {
-      setStatus('Configure o arquivo .env com dados do Firebase');
-      return;
-    }
-    void completeGoogleRedirect().catch((e) => setStatus(err(e)));
-    const unsubscribe = observeUser((user) => {
-      uidRef.current = user?.uid || '';
-      setUid(user?.uid || '');
-      setApproved(false);
-      setAuthReady(true);
-      if (user && user.email) {
-        void set(ref(db, 'community/requests/' + user.uid), {
-          email: user.email,
-          createdAt: Date.now(),
-        }).catch(() => {});
-      }
-    });
-    return () => {
-      unsubscribe();
-      cleanups.current.forEach((f) => f());
-      Object.values(peers.current).forEach((p) => p.close());
-      stream.current?.getTracks().forEach((t) => t.stop());
-    };
-  }, []);
-  async function savePermission(level: AccessLevel) {
-    if (!permissionTarget) return;
-    try {
-      if (permissionTarget.kind === 'category') await setCategoryAccess(permissionTarget.id, level);
-      else await setChannelAccess(permissionTarget.id, level);
-      setToast({ text: 'Permissão atualizada', type: 'success' });
-      setPermissionTarget(null);
-    } catch (e) {
-      setToast({ text: 'Erro ao salvar acesso: ' + err(e), type: 'error' });
-    }
-  }
-  async function approveMember(id: string) {
-    setToast({ text: 'Aprovando acesso…', type: 'info' });
-    if (approvalBusy) return;
-    setApprovalBusy(id);
-    setApprovalNotice('Aprovando solicitação…');
-    try {
-      await set(ref(db, 'community/approved/' + id), true);
-      setApprovalNotice('Acesso aprovado! O usuário já pode entrar no Nimbo.');
-      setToast({ text: 'Acesso liberado com sucesso', type: 'success' });
-      setStatus('Membro aprovado com sucesso');
-    } catch (e) {
-      setApprovalNotice('Não foi possível aprovar: ' + err(e));
-      setToast({ text: 'Falha ao aprovar: ' + err(e), type: 'error' });
-    } finally {
-      setApprovalBusy(null);
-    }
-  }
-  const path = (suffix = '') => `rooms/${roomRef.current}${suffix}`;
-  async function signal(other: string, msg: Msg) {
-    await push(ref(db, path(`/signals/${other}/${uidRef.current}`)), msg);
-  }
-  async function drain(other: string, pc: RTCPeerConnection) {
-    if (!pc.remoteDescription) return;
-    for (const c of buffers.current[other] || []) await pc.addIceCandidate(c).catch(console.warn);
-    buffers.current[other] = [];
-  }
-  function peer(other: string) {
-    if (peers.current[other]) return peers.current[other];
-    const pc = new RTCPeerConnection(iceServers);
-    peers.current[other] = pc;
-    pc.onicecandidate = (e) => {
-      if (e.candidate)
-        void signal(other, { type: 'ice', candidate: e.candidate.toJSON() }).catch(console.warn);
-    };
-    pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'failed')
-        setStatus('A conexão com uma transmissão falhou. Tente entrar novamente na sala.');
-    };
-    pc.ontrack = (e) => {
-      const existing = remoteStreams.current[other] || new MediaStream();
-      if (!existing.getTracks().some((track) => track.id === e.track.id)) existing.addTrack(e.track);
-      remoteStreams.current[other] = existing;
-      e.track.onended = () => {
-        existing.removeTrack(e.track);
-        setStreamRevision((v) => v + 1);
-      };
-      e.track.onmute = () => setStreamRevision((v) => v + 1);
-      e.track.onunmute = () => setStreamRevision((v) => v + 1);
-      setStreamRevision((v) => v + 1);
-      setStreamRevision((v) => v + 1);
-      setStatus('Transmissão recebida');
-    };
-    stream.current?.getTracks().forEach((track) => pc.addTrack(track, stream.current!));
-    return pc;
-  }
-  async function offer(other: string) {
-    const previous = negotiating.current[other] || Promise.resolve();
-    const next = previous
-      .catch(() => {})
-      .then(async () => {
-        const pc = peer(other);
-        if (pc.signalingState !== 'stable') return;
-        const desc = await pc.createOffer();
-        await pc.setLocalDescription(desc);
-        await signal(other, { type: 'offer', sdp: desc });
-      });
-    negotiating.current[other] = next;
-    await next;
-  }
-  async function handle(other: string, msg: Msg) {
-    let pc = peers.current[other];
-    if (msg.type === 'offer') {
-      if (pc && pc.signalingState !== 'stable') {
-        pc.close();
-        delete peers.current[other];
-        delete remoteStreams.current[other];
-      }
-      pc = peer(other);
-      await pc.setRemoteDescription(msg.sdp!);
-      await drain(other, pc);
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      await signal(other, { type: 'answer', sdp: answer });
-    } else if (msg.type === 'answer') {
-      if (!pc) return;
-      await pc.setRemoteDescription(msg.sdp!);
-      await drain(other, pc);
-    } else if (msg.candidate) {
-      if (pc?.remoteDescription) await pc.addIceCandidate(msg.candidate);
-      else (buffers.current[other] ??= []).push(msg.candidate);
-    }
-  }
-  function attach(id: string, owner: boolean) {
-    roomRef.current = id;
-    hostRef.current = owner;
-    setRoom(id);
-    setHost(owner);
-    setJoined(true);
-    history.replaceState(null, '', `?room=${id}`);
-    cleanups.current.push(
-      onValue(ref(db, path('/signals/' + uidRef.current)), (snap) => {
-        const data = snap.val() as Record<string, Record<string, Msg>> | null;
-        for (const [other, msgs] of Object.entries(data || {}))
-          for (const [key, msg] of Object.entries(msgs)) {
-            const fingerprint = other + ':' + key;
-            if (seen.current.has(fingerprint)) continue;
-            seen.current.add(fingerprint);
-            void handle(other, msg)
-              .then(() => remove(ref(db, path(`/signals/${uidRef.current}/${other}/${key}`))))
-              .catch((e) => setStatus(err(e)));
-          }
-      }),
-    );
-    cleanups.current.push(
-      onValue(ref(db, path('/members')), (snap) => {
-        const members = snap.val() as Record<string, unknown> | null;
-        setCount(Object.keys(members || {}).length);
-        setRoomMembers(Object.keys(members || {}));
-        for (const id of Object.keys(members || {}))
-          if (id !== uidRef.current && stream.current && !peers.current[id])
-            void offer(id).catch((e) => setStatus(err(e)));
-        for (const id of Object.keys(peers.current))
-          if (!members?.[id]) {
-            peers.current[id].close();
-            delete peers.current[id];
-            delete remoteStreams.current[id];
-            setStreamRevision((v) => v + 1);
-          }
-      }),
-    );
-    cleanups.current.push(
-      onValue(ref(db, path()), (snap) => {
-        if (!snap.exists()) {
-          setLive(false);
-          setStatus('Sala encerrada');
-          return;
-        }
-        setBroadcasts((snap.val() as Room & { streams?: Record<string, boolean> }).streams || {});
-      }),
-    );
-  }
-  async function create(id: string) {
-    if (!uid || busy || !profileReady) return;
-    setBusy(true);
-    setStatus('Entrando no canal…');
-    try {
-      roomRef.current = id;
-      const snap = await get(ref(db, path()));
-      if (snap.exists()) {
-        await join(id);
+    [data.channels, data.channelAccess, data.categoryAccess, role],
+  );
+  const presence = useRoomsPresence(data.loaded ? allowedChannels : []);
+  const nameOf = useCallback(
+    (id: string) => data.profiles[id]?.displayName || 'Participante',
+    [data.profiles],
+  );
+
+  const join = useCallback(
+    async (channelId: string, watch?: string) => {
+      setAdminOpen(false);
+      if (room === channelId) {
+        if (watch) setVisible((ids) => (ids.includes(watch) ? ids : [...ids, watch]));
         return;
       }
-      await set(ref(db, path()), {
-        host: uid,
-        live: false,
-        createdAt: Date.now(),
-        members: { [uid]: { joinedAt: Date.now() } },
-      });
-      attach(id, true);
-      await onDisconnect(ref(db, path('/members/' + uid))).remove();
-      setStatus('Canal conectado. Escolha uma live ou compartilhe sua tela.');
-    } catch (e) {
-      setStatus(err(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function join(channel = room) {
-    if (!uid || !channel || !profileReady) return;
-    setStatus('Conectando ao canal…');
-    try {
-      roomRef.current = channel;
-      const snap = await get(ref(db, path()));
-      if (!snap.exists()) throw Error('Sala não encontrada');
-      const data = snap.val() as Room;
-      if (Object.keys(data.members || {}).length >= 20 && !data.members?.[uid]) throw Error('Sala cheia');
-      await set(ref(db, path('/members/' + uid)), { joinedAt: Date.now() });
-      attach(channel, data.host === uid);
-      await onDisconnect(ref(db, path('/members/' + uid))).remove();
-      setStatus('Você também pode transmitir.');
-    } catch (e) {
-      setStatus(err(e));
-    }
-  }
-  async function start(kind: 'screen' | 'camera' = 'screen') {
-    if (busy || live) return;
-    setBusy(true);
-    setBroadcastKind(kind);
-    setStatus(
-      kind === 'camera'
-        ? 'Solicitando acesso à webcam…'
-        : 'Escolha a tela ou janela que deseja compartilhar…',
-    );
-    try {
-      const captureOptions: DisplayMediaStreamOptions & {
-        systemAudio?: 'include' | 'exclude';
-        windowAudio?: 'window' | 'system' | 'exclude';
-      } = {
-        video: {
-          width: { ideal: quality === 1080 ? 1920 : 1280 },
-          height: { ideal: quality },
-          frameRate: { ideal: frameRate, max: frameRate },
-          displaySurface: captureMode === 'screen' ? 'monitor' : 'window',
-        },
-        audio: audioMode !== 'none',
-        systemAudio: audioMode === 'system' ? 'include' : 'exclude',
-        windowAudio: audioMode === 'window' ? 'window' : audioMode === 'system' ? 'system' : 'exclude',
-      };
-      const capture =
-        kind === 'camera'
-          ? await navigator.mediaDevices.getUserMedia({
-              video: {
-                width: { ideal: quality === 1080 ? 1920 : 1280 },
-                height: { ideal: quality },
-                frameRate: { ideal: frameRate, max: frameRate },
-              },
-              audio: false,
-            })
-          : await navigator.mediaDevices.getDisplayMedia(captureOptions);
-      const surface = capture.getVideoTracks()[0].getSettings().displaySurface;
-      if (kind === 'screen' && captureMode === 'screen' && surface !== 'monitor') {
-        setStatus('Você selecionou uma janela ou guia; para jogos em tela cheia, prefira Tela inteira.');
+      try {
+        await live.join(channelId);
+        // Ao entrar, abre as lives que já estão no ar (até 4) ou a escolhida.
+        const streams = presence[channelId]?.streams || {};
+        setVisible(
+          watch
+            ? [watch]
+            : Object.keys(streams)
+                .filter((id) => id !== uid)
+                .slice(0, 4),
+        );
+      } catch (e) {
+        toast.error(e);
       }
-      if (audioMode === 'window' && surface === 'monitor') {
-        setStatus('Tela inteira ativa. O navegador pode não incluir o áudio do jogo nesse modo.');
-      }
-      stream.current = capture;
-      capture.getVideoTracks()[0].onended = () => void stop();
-      setVisibleLives((v) => (v.includes(uidRef.current) ? v : [...v, uidRef.current]));
-      setStreamRevision((v) => v + 1);
-      const membersSnap = await get(ref(db, path('/members')));
-      const members = membersSnap.val() as Record<string, unknown> | null;
-      for (const id of Object.keys(members || {})) {
-        if (id === uidRef.current) continue;
-        const pc = peer(id);
-        for (const track of capture.getTracks()) {
-          if (!pc.getSenders().some((sender) => sender.track?.id === track.id)) pc.addTrack(track, capture);
-        }
-        await offer(id);
-      }
-      await set(ref(db, path('/streams/' + uidRef.current)), true);
-      await onDisconnect(ref(db, path('/streams/' + uidRef.current))).remove();
-      setLive(true);
-      setStatus('Transmitindo!');
-    } catch (e) {
-      setStatus('Captura não iniciada: ' + err(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function stop() {
-    stream.current?.getTracks().forEach((t) => t.stop());
-    stream.current = null;
-    for (const [id, pc] of Object.entries(peers.current)) {
-      for (const sender of pc.getSenders()) {
-        if (sender.track) {
-          pc.removeTrack(sender);
-        }
-      }
-      void offer(id).catch(console.warn);
-    }
-    if (roomRef.current) await remove(ref(db, path('/streams/' + uidRef.current))).catch(console.warn);
-    setVisibleLives((v) => v.filter((id) => id !== uidRef.current));
-    setLive(false);
-    setStatus('Transmissão encerrada');
-  }
-  async function leave() {
-    setStatus('Saindo do canal…');
-    await stop();
-    await remove(ref(db, path('/members/' + uid)));
-    Object.values(peers.current).forEach((p) => p.close());
-    peers.current = {};
-    remoteStreams.current = {};
-    setVisibleLives([]);
-    setRoomMembers([]);
-    setStreamRevision((v) => v + 1);
-    cleanups.current.forEach((f) => f());
-    cleanups.current = [];
-    roomRef.current = '';
-    hostRef.current = false;
-    setJoined(false);
-    setHost(false);
-    setRoom('');
-    history.replaceState(null, '', location.pathname);
-  }
+    },
+    [live, room, presence, uid, toast],
+  );
+
+  // Link de convite (?room=) e reabertura da página.
+  const [autoJoined, setAutoJoined] = useState(false);
   useEffect(() => {
-    const active = new Set(Object.keys(broadcasts).filter((id) => broadcasts[id]));
-    if (live) active.add(uid);
-    setVisibleLives((current) => current.filter((id) => active.has(id)));
-    for (const id of Object.keys(remoteStreams.current)) {
-      if (!active.has(id)) {
-        delete remoteStreams.current[id];
-        setStreamRevision((v) => v + 1);
-      }
-    }
-  }, [broadcasts, live, uid]);
+    if (autoJoined || !data.loaded || !nickname) return;
+    setAutoJoined(true);
+    const target = new URLSearchParams(location.search).get('room');
+    if (target && allowedChannels.includes(target)) void join(target);
+    else if (target) toast.error('Você não tem acesso a este canal.');
+  }, [autoJoined, data.loaded, nickname, allowedChannels, join, toast]);
+
+  // Permissão retirada enquanto conectado: sai do canal (o servidor também já bloqueia a leitura).
   useEffect(() => {
-    if (!joined) return;
-    const timer = setInterval(() => {
-      const p = Object.values(peers.current)[0];
-      if (!p) return;
-      void p.getStats().then((report) =>
-        report.forEach((r) => {
-          if ((r.type === 'outbound-rtp' || r.type === 'inbound-rtp') && r.kind === 'video')
-            setStats(`${r.framesPerSecond || '?'} FPS · ${p.connectionState}`);
-        }),
-      );
-    }, 2500);
-    return () => clearInterval(timer);
-  }, [joined]);
-  if (!authReady || !uid || !approved)
+    if (room && data.loaded && !allowedChannels.includes(room)) {
+      void live.leave();
+      toast.error('Você não tem mais acesso a este canal.');
+    }
+  }, [room, data.loaded, allowedChannels, live, toast]);
+
+  const toggleBroadcast = async (kind: StreamKind) => {
+    try {
+      if (snapshot.localKind === kind) {
+        await live.stop();
+        toast.info(kind === 'camera' ? 'Webcam desligada' : 'Transmissão encerrada');
+        return;
+      }
+      await live.start(kind, capture);
+      setVisible((ids) => (ids.includes(uid) ? ids : [...ids, uid]));
+      toast.success(kind === 'camera' ? 'Webcam ao vivo' : 'Transmissão iniciada');
+    } catch (e) {
+      toast.error(e);
+    }
+  };
+
+  const createChannelIn = async (categoryId: string) => {
+    const name = await dialogs.prompt({
+      title: 'Novo canal',
+      label: 'Nome do canal',
+      confirmLabel: 'Criar',
+      validate: (v) => (v.trim().length < 2 || v.trim().length > 32 ? 'Use de 2 a 32 caracteres.' : ''),
+    });
+    if (!name) return;
+    try {
+      await createChannel(uid, name, '', categoryId);
+      toast.success('Canal criado');
+    } catch (e) {
+      toast.error(e);
+    }
+  };
+
+  if (!data.loaded) return <LoadingScreen />;
+  if (!nickname)
     return (
-      <div className="page auth-page">
-        <div className="account-gate">
-          <div className="account-mark">☁</div>
-          <h1>
-            Nim<em>bo</em>
-          </h1>
-          <p className="account-subtitle">Suas lives. Sua comunidade.</p>
-          {!authReady ? (
-            <p>Verificando sua conta…</p>
-          ) : uid ? (
-            <>
-              <div className="pending-note">
-                <strong>Aguardando aprovação</strong>
-                <span>Sua solicitação foi registrada. Um administrador precisa liberar sua conta.</span>
-              </div>
-              <button className="secondary" onClick={() => void signOutAccount()}>
-                Trocar conta
-              </button>
-            </>
-          ) : (
-            <>
-              <p>Entre para transmitir e assistir com seus amigos.</p>
-              <div className="google-login">
-                <button
-                  onClick={() =>
-                    void signInGoogle()
-                      .then(() => setStatus('Login realizado. Verificando aprovação…'))
-                      .catch((e) => setStatus('Não foi possível entrar: ' + err(e)))
-                  }
-                >
-                  <span className="google-g">G</span> Continuar com Google
-                </button>
-                <small>O acesso depende da aprovação de um administrador.</small>
-              </div>
-            </>
-          )}
-          <p className="status">{status === 'Pronto para começar' ? '' : status}</p>
-        </div>
-      </div>
+      <NicknameScreen
+        onSave={async (name) => {
+          await saveProfile(uid, name);
+          toast.success('Perfil pronto!');
+        }}
+      />
     );
-  if (authReady && uid && approved && !profileReady)
-    return (
-      <div className="page auth-page">
-        <form
-          className="account-gate nickname-gate"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (displayName.trim().length < 3 || displayName.trim().length > 24) {
-              setStatus('Use de 3 a 24 caracteres.');
-              return;
-            }
-            setProfileSaving(true);
-            void saveProfile(uid, displayName)
-              .then(() => {
-                setProfileReady(true);
-                setStatus('Perfil pronto!');
-              })
-              .catch((e) => setStatus(err(e)))
-              .finally(() => setProfileSaving(false));
-          }}
-        >
-          <div className="account-mark">☁</div>
-          <h1>Seu nome no Nimbo</h1>
-          <p>Escolha um nickname para aparecer nas salas e nas transmissões.</p>
-          <input
-            required
-            minLength={3}
-            maxLength={24}
-            autoFocus
-            aria-label="Seu nickname"
-            placeholder="Como seus amigos vão te chamar?"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-          />
-          <button type="submit" disabled={profileSaving}>
-            {profileSaving ? 'Salvando…' : 'Continuar'}
-          </button>
-          <p className="status">{status}</p>
-        </form>
-      </div>
-    );
+
+  const channelName = data.channels[room]?.name || room;
+  const permissionLevel = permission
+    ? (permission.kind === 'category' ? data.categoryAccess : data.channelAccess)[permission.id] || 'member'
+    : 'member';
+  const permissionName = permission
+    ? (permission.kind === 'category'
+        ? data.categories[permission.id]?.name
+        : data.channels[permission.id]?.name) || ''
+    : '';
+
   return (
-    <div className="page">
-      <div className="community-shell">
-        <nav className="community-sidebar">
-          <div className="server-heading">
-            <span className="server-avatar">
-              <img src="/nimbo-mascot.svg" alt="Mascote Nimbo" />
-            </span>
-            <strong>Nimbo</strong>
-            <span className="server-private">PRIVADO</span>
-            {(roles[uid] === 'owner' || roles[uid] === 'admin') && (
-              <button
-                className={'server-admin-gear ' + (showAdmin ? 'active' : '')}
-                aria-label="Painel administrativo"
-                title="Gerenciar comunidade"
-                onClick={() => setShowAdmin((v) => !v)}
-              >
-                ⚙
-              </button>
-            )}
-          </div>
-          <div className="channel-rail-top">
-            <span>CANAIS</span>
-            {(roles[uid] === 'owner' || roles[uid] === 'admin') && (
-              <button
-                title="Criar canal ou categoria"
-                onClick={() => {
-                  setShowAdmin(true);
-                  setAdminTab('channels');
-                }}
-              >
-                ＋
-              </button>
-            )}
-          </div>
-          {Object.entries(categories)
-            .sort((a, b) => a[1].order - b[1].order)
-            .map(([categoryId, category]) => (
-              <div className="sidebar-category" key={categoryId}>
-                <button
-                  className="sidebar-section-toggle"
-                  onClick={() =>
-                    setExpandedCategories((old) => ({
-                      ...old,
-                      [categoryId]: old[categoryId] === false ? true : false,
-                    }))
-                  }
-                >
-                  <span>
-                    {expandedCategories[categoryId] === false ? '›' : '⌄'} {category.name.toUpperCase()}
-                  </span>
-                  <small>
-                    {
-                      Object.values(channels).filter(
-                        (c) => (c.categoryId || 'lives') === categoryId && c.enabled,
-                      ).length
-                    }
-                  </small>
-                </button>
-                {(roles[uid] === 'owner' || roles[uid] === 'admin') && (
-                  <button
-                    className="sidebar-settings-icon"
-                    title={'Permissões de ' + category.name}
-                    aria-label={'Permissões de ' + category.name}
-                    onClick={() => setPermissionTarget({ kind: 'category', id: categoryId })}
-                  >
-                    ⚙
-                  </button>
-                )}
-                {expandedCategories[categoryId] !== false &&
-                  Object.entries(channels)
-                    .filter(
-                      ([, channel]) => channel.enabled && (channel.categoryId || 'lives') === categoryId,
-                    )
-                    .map(([id, c]) => (
-                      <div className="sidebar-channel-group" key={id}>
-                        <button
-                          className={'sidebar-channel ' + (room === id ? 'active' : '')}
-                          disabled={busy}
-                          onClick={() => {
-                            setShowAdmin(false);
-                            if (
-                              !(
-                                canAccess(channelAccess[id] || 'member', roles[uid] || 'member') &&
-                                canAccess(
-                                  categoryAccess[c.categoryId || 'lives'] || 'member',
-                                  roles[uid] || 'member',
-                                )
-                              )
-                            ) {
-                              setToast({ text: 'Você não tem acesso a este canal', type: 'error' });
-                              return;
-                            }
-                            if (joined && room === id) return;
-                            if (joined) {
-                              void leave().then(() => create(id));
-                            } else void create(id);
-                          }}
-                        >
-                          <span className="channel-symbol">▣</span>
-                          <span className="channel-name">{c.name}</span>
-                          {!(
-                            canAccess(channelAccess[id] || 'member', roles[uid] || 'member') &&
-                            canAccess(
-                              categoryAccess[c.categoryId || 'lives'] || 'member',
-                              roles[uid] || 'member',
-                            )
-                          ) && (
-                            <span title="Canal restrito" className="restricted-icon">
-                              ◆
-                            </span>
-                          )}
-                          {room === id && joined && <span className="online-indicator">●</span>}
-                        </button>
-                        {(roles[uid] === 'owner' || roles[uid] === 'admin') && (
-                          <button
-                            className="sidebar-channel-settings"
-                            aria-label={'Permissões do canal ' + c.name}
-                            title={'Permissões do canal ' + c.name}
-                            onClick={() => setPermissionTarget({ kind: 'channel', id })}
-                          >
-                            ⚙
-                          </button>
-                        )}
-                        {
-                          <div className="sidebar-room-members">
-                            <span className="sidebar-member-caption">
-                              {
-                                (roomOverview[id]?.members || []).filter(
-                                  (memberId) => Boolean(profiles[memberId]?.displayName) || memberId === uid,
-                                ).length
-                              }{' '}
-                              pessoa(s) no canal
-                            </span>
-                            {(roomOverview[id]?.members || [])
-                              .filter(
-                                (memberId) => Boolean(profiles[memberId]?.displayName) || memberId === uid,
-                              )
-                              .map((memberId) => (
-                                <button
-                                  key={memberId}
-                                  className={
-                                    'sidebar-participant ' +
-                                    (roomOverview[id]?.streams[memberId] ? 'is-live' : '')
-                                  }
-                                  onClick={() => {
-                                    if (room === id && joined && roomOverview[id]?.streams[memberId])
-                                      setVisibleLives((current) =>
-                                        current.includes(memberId)
-                                          ? current.filter((x) => x !== memberId)
-                                          : [...current, memberId],
-                                      );
-                                  }}
-                                  title={
-                                    roomOverview[id]?.streams[memberId]
-                                      ? room === id && joined
-                                        ? 'Clique para assistir ou ocultar a live'
-                                        : 'Entre no canal para assistir'
-                                      : 'Participante conectado'
-                                  }
-                                >
-                                  <span className="participant-avatar">
-                                    {(memberId === uid
-                                      ? displayName || 'V'
-                                      : profiles[memberId]?.displayName || 'U'
-                                    )
-                                      .slice(0, 1)
-                                      .toUpperCase()}
-                                  </span>
-                                  <span className="participant-label">
-                                    {memberId === uid
-                                      ? (displayName || 'Você') + ' (você)'
-                                      : profiles[memberId]?.displayName ||
-                                        'Participante ' + memberId.slice(0, 5)}
-                                    <small>
-                                      {roomOverview[id]?.streams[memberId]
-                                        ? memberId === uid
-                                          ? '● Ao vivo'
-                                          : '● Ao vivo · assistir'
-                                        : 'Conectado'}
-                                    </small>
-                                  </span>
-                                  {roomOverview[id]?.streams[memberId] && (
-                                    <span
-                                      className="participant-live-icon"
-                                      aria-label="Transmitindo"
-                                      title="Transmitindo"
-                                    >
-                                      ▣
-                                    </span>
-                                  )}
-                                </button>
-                              ))}
-                          </div>
-                        }
-                      </div>
-                    ))}
-              </div>
-            ))}{' '}
-          <div className="sidebar-divider" />
-          <div className="sidebar-bottom">
-            {joined && (
-              <div className="sidebar-connected">
-                <div className="sidebar-connection-title">
-                  <span className="sidebar-connection-dot">●</span>
-                  <div>
-                    <strong>{live ? 'Transmitindo ao vivo' : 'Conectado ao canal'}</strong>
-                    <small>{channels[room]?.name || room}</small>
-                  </div>
-                  <button
-                    className="sidebar-leave"
-                    title="Desconectar do canal"
-                    aria-label="Desconectar do canal"
-                    onClick={() => void leave()}
-                  >
-                    ⏻
-                  </button>
-                </div>
-                <div className="sidebar-stream-actions">
-                  {live ? (
-                    <button className="sidebar-stream-stop" disabled={busy} onClick={() => void stop()}>
-                      ■ Encerrar transmissão
-                    </button>
-                  ) : (
-                    <>
-                      <button
-                        className="sidebar-stream-action"
-                        title="Ativar webcam"
-                        disabled={busy}
-                        onClick={() => void start('camera')}
-                      >
-                        <span className="sidebar-action-icon">◉</span>
-                        <span>Webcam</span>
-                      </button>
-                      <button
-                        className="sidebar-stream-action primary"
-                        title="Compartilhar tela"
-                        disabled={busy}
-                        onClick={() => void start('screen')}
-                      >
-                        <span className="sidebar-action-icon">▣</span>
-                        <span>Compartilhar</span>
-                      </button>
-                    </>
-                  )}
-                </div>
-                <div className="sidebar-utility-actions">
-                  <button
-                    title="Copiar convite do canal"
-                    onClick={() =>
-                      void navigator.clipboard
-                        .writeText(location.origin + '/?room=' + room)
-                        .then(() => setStatus('Link copiado'))
-                        .catch((e) => setStatus(err(e)))
-                    }
-                  >
-                    ⌁ Convite
-                  </button>
-                  <button title="Configurações de transmissão" onClick={() => setShowStreamSettings(true)}>
-                    ⚙ Ajustes
-                  </button>
-                </div>
-              </div>
-            )}
-            <div className="sidebar-account">
-              <span className="account-avatar">{(displayName || 'N').slice(0, 1).toUpperCase()}</span>
-              <div className="sidebar-account-name">
-                <strong>{displayName || 'Meu perfil'}</strong>
-                <small>{roles[uid] || 'member'}</small>
-              </div>
-              <button
-                aria-label="Configurações de perfil"
-                title="Editar perfil"
-                onClick={() => setShowPreferences((x) => !x)}
-              >
-                ⚙
-              </button>
-              <button aria-label="Sair da conta" title="Sair da conta" onClick={() => void signOutAccount()}>
-                ⏻
-              </button>
-            </div>
-            {showPreferences && (
-              <div className="sidebar-preferences">
-                <label>Seu apelido</label>
-                <input
-                  aria-label="Seu nome"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="Seu apelido"
-                />
-                <button
-                  onClick={() =>
-                    void saveProfile(uid, displayName)
-                      .then(() => {
-                        setStatus('Perfil salvo');
-                        setShowPreferences(false);
-                      })
-                      .catch((e) => setStatus(err(e)))
-                  }
-                >
-                  Salvar nome
-                </button>
-              </div>
-            )}
-          </div>
-        </nav>
-        <main>
-          {showAdmin && (roles[uid] === 'owner' || roles[uid] === 'admin') && (
-            <section className="community-admin admin-page">
-              <div className="admin-page-head">
-                <div>
-                  <span className="admin-eyebrow">NIMBO · ADMINISTRAÇÃO</span>
-                  <h2>Gerenciar comunidade</h2>
-                  <p>Organize canais e controle o acesso à comunidade.</p>
-                </div>
-                <button className="secondary" onClick={() => setShowAdmin(false)}>
-                  Fechar
-                </button>
-              </div>
-              <div className="admin-tabs">
-                <button
-                  className={adminTab === 'channels' ? 'active' : ''}
-                  onClick={() => setAdminTab('channels')}
-                >
-                  ▣ Canais
-                </button>
-                <button
-                  className={adminTab === 'members' ? 'active' : ''}
-                  onClick={() => setAdminTab('members')}
-                >
-                  ♙ Membros e acesso
-                </button>
-              </div>
-              <div className="admin-grid">
-                <div className={adminTab !== 'channels' ? 'admin-hidden' : ''}>
-                  <h3>Categorias e canais</h3>
-                  <div className="admin-create">
-                    <input
-                      placeholder="Nova categoria"
-                      value={categoryInput}
-                      onChange={(e) => setCategoryInput(e.target.value)}
-                    />
-                    <button
-                      onClick={() =>
-                        void createCategory(uid, categoryInput)
-                          .then(() => {
-                            setCategoryInput('');
-                            setStatus('Categoria criada');
-                          })
-                          .catch((e) => setStatus(err(e)))
-                      }
-                    >
-                      Criar categoria
-                    </button>
-                  </div>
-                  <div className="admin-create">
-                    <select
-                      aria-label="Categoria do novo canal"
-                      value={selectedCategory}
-                      onChange={(e) => setSelectedCategory(e.target.value)}
-                    >
-                      {Object.entries(categories).map(([id, c]) => (
-                        <option key={id} value={id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      aria-label="Novo canal"
-                      placeholder="Nome do canal"
-                      value={newChannel}
-                      onChange={(e) => setNewChannel(e.target.value)}
-                    />
-                    <button
-                      onClick={() =>
-                        void createChannel(uid, newChannel, 'Canal da comunidade', selectedCategory)
-                          .then(() => {
-                            setNewChannel('');
-                            setStatus('Canal criado');
-                          })
-                          .catch((e) => setStatus(err(e)))
-                      }
-                    >
-                      Criar
-                    </button>
-                  </div>
-                  {Object.entries(categories).map(([categoryId, category]) => (
-                    <div key={categoryId} className="admin-entry">
-                      <strong>▾ {category.name}</strong>
-                      {categoryId !== 'lives' && (
-                        <button
-                          onClick={() => {
-                            const name = window.prompt('Renomear categoria', category.name);
-                            if (name) void renameCategory(categoryId, name).catch((e) => setStatus(err(e)));
-                          }}
-                        >
-                          Renomear
-                        </button>
-                      )}
-                      {categoryId !== 'lives' &&
-                        !Object.values(channels).some((c) => c.categoryId === categoryId) && (
-                          <button
-                            onClick={() => void deleteCategory(categoryId).catch((e) => setStatus(err(e)))}
-                          >
-                            Excluir
-                          </button>
-                        )}
-                    </div>
-                  ))}
-                  {Object.entries(channels).map(([id, channel]) => (
-                    <div key={id} className="admin-entry">
-                      <span>{channel.name}</span>
-                      <select
-                        aria-label={'Categoria de ' + channel.name}
-                        value={channel.categoryId || 'lives'}
-                        disabled={id === 'geral' || id === 'competitivo'}
-                        onChange={(e) =>
-                          void editChannel(id, { categoryId: e.target.value }).catch((e) => setStatus(err(e)))
-                        }
-                      >
-                        {Object.entries(categories).map(([cid, cat]) => (
-                          <option key={cid} value={cid}>
-                            {cat.name}
-                          </option>
-                        ))}
-                      </select>
-                      {id !== 'geral' && id !== 'competitivo' && (
-                        <button
-                          onClick={() => {
-                            if (!window.confirm('Excluir canal ' + channel.name + '?')) return;
-                            void deleteChannel(id).catch((e) => setStatus(err(e)));
-                          }}
-                        >
-                          Excluir
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                <div className={adminTab !== 'members' ? 'admin-hidden' : ''}>
-                  <h3>Membros e permissões</h3>
-                  {roles[uid] === 'owner' && (
-                    <div className="approval-section">
-                      <div className="approval-section-heading">
-                        <strong>Solicitações pendentes</strong>
-                        <span>{Object.keys(accessRequests).filter((id) => !approvedMembers[id]).length}</span>
-                      </div>
-                      {approvalNotice && (
-                        <p className="approval-feedback" role="status" aria-live="polite">
-                          {approvalNotice}
-                        </p>
-                      )}
-                      {Object.entries(accessRequests)
-                        .filter(([id]) => !approvedMembers[id])
-                        .map(([id, request]) => (
-                          <div className="admin-entry approval-entry" key={id}>
-                            <div>
-                              <strong>{request.email}</strong>
-                              <small>Aguardando autorização</small>
-                            </div>
-                            <button disabled={approvalBusy !== null} onClick={() => void approveMember(id)}>
-                              {approvalBusy === id ? 'Aprovando…' : 'Aprovar acesso'}
-                            </button>
-                          </div>
-                        ))}
-                      {!Object.keys(accessRequests).some((id) => !approvedMembers[id]) && (
-                        <p className="approval-empty">Nenhuma solicitação pendente.</p>
-                      )}
-                      <h3>Membros aprovados</h3>
-                      {Object.entries(accessRequests)
-                        .filter(([id]) => approvedMembers[id] && !profiles[id])
-                        .map(([id, request]) => (
-                          <div className="admin-entry" key={id}>
-                            <span>{request.email}</span>
-                            <span className="approved-tag">✓ Aprovado</span>
-                          </div>
-                        ))}
-                    </div>
-                  )}
-                  {Object.entries(profiles).map(([id, profile]) => (
-                    <div className="admin-entry" key={id}>
-                      <span>
-                        {profile.displayName} {id === uid ? '(você)' : ''}
-                      </span>
-                      <span className="role-pill">{roles[id] || 'member'}</span>
-                      {roles[uid] === 'owner' && id !== uid && (
-                        <select
-                          aria-label={'Cargo de ' + profile.displayName}
-                          value={roles[id] || 'member'}
-                          onChange={(e) =>
-                            void assignRole(id, e.target.value as CommunityRole).catch((e) =>
-                              setStatus(err(e)),
-                            )
-                          }
-                        >
-                          <option value="member">Membro</option>
-                          <option value="admin">Admin</option>
-                        </select>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </section>
-          )}
-          {!joined ? (
-            <div className="empty-home">
-              <div className="home-symbol">
-                <img src="/nimbo-mascot.svg" alt="Mascote Nimbo" />
-              </div>
-              <h1>Bem-vindo ao Nimbo</h1>
-              <p>Escolha um canal na barra lateral para assistir às lives ou iniciar uma transmissão.</p>
-              <span className="home-note">Seu espaço privado para compartilhar momentos com amigos.</span>
-            </div>
-          ) : (
-            <div className="layout">
-              <section className="stage">
-                <div className="stage-head">
-                  <b>
-                    {live
-                      ? '● VOCÊ ESTÁ AO VIVO'
-                      : Object.values(broadcasts).some(Boolean)
-                        ? '● LIVES ATIVAS'
-                        : '⚪ AGUARDANDO'}
-                  </b>
-                  <span>{count}/20 participantes</span>
-                </div>
-                <div
-                  className={
-                    'multiview-grid ' +
-                    (visibleLives.length === 1 ? 'single' : '') +
-                    (layoutMode === 'focus' ? ' focus' : '')
-                  }
-                >
-                  {visibleLives
-                    .filter((id) => layoutMode === 'grid' || id === (focusedLive || visibleLives[0]))
-                    .map((id) => (
-                      <LiveTile
-                        key={id}
-                        id={id}
-                        name={
-                          id === uid
-                            ? 'Sua live'
-                            : profiles[id]?.displayName || 'Participante ' + id.slice(0, 5)
-                        }
-                        source={id === uid ? stream.current : remoteStreams.current[id] || null}
-                        own={id === uid}
-                        muted={mutedLives[id] ?? true}
-                        onMute={(value) => setMutedLives((old) => ({ ...old, [id]: value }))}
-                        onClose={() => setVisibleLives((old) => old.filter((x) => x !== id))}
-                      />
-                    ))}
-                  {visibleLives.length === 0 && (
-                    <div className="overlay">
-                      Selecione alguém ao vivo na lista do canal ou comece a transmitir
-                    </div>
-                  )}
-                  <div className="controls stage-overlay-controls">
-                    <div className="layout-toolbar">
-                      <button
-                        className={layoutMode === 'grid' ? 'active' : ''}
-                        onClick={() => setLayoutMode('grid')}
-                      >
-                        ▦ Grade
-                      </button>
-                      <button
-                        className={layoutMode === 'focus' ? 'active' : ''}
-                        onClick={() => setLayoutMode('focus')}
-                      >
-                        ▣ Destaque
-                      </button>
-                      {layoutMode === 'focus' && (
-                        <select
-                          aria-label="Live principal"
-                          value={focusedLive || visibleLives[0] || ''}
-                          onChange={(e) => setFocusedLive(e.target.value)}
-                        >
-                          {visibleLives.map((id) => (
-                            <option key={id} value={id}>
-                              {id === uid ? 'Sua live' : profiles[id]?.displayName || id.slice(0, 5)}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
-                    <span className="stage-viewer-hint">
-                      {live ? '● Sua transmissão está ativa' : 'Visualização'}
-                    </span>
-                  </div>
-                </div>
-              </section>
-            </div>
-          )}
-          {permissionTarget && (
-            <div
-              className="stream-modal-backdrop"
-              onMouseDown={(e) => {
-                if (e.target === e.currentTarget) setPermissionTarget(null);
-              }}
-            >
-              <section className="stream-modal" role="dialog" aria-modal="true">
-                <div className="stream-modal-header">
-                  <div>
-                    <span className="stream-modal-kicker">CONTROLE DE ACESSO</span>
-                    <h2>
-                      {permissionTarget.kind === 'category'
-                        ? 'Permissões da categoria'
-                        : 'Permissões do canal'}
-                    </h2>
-                  </div>
-                  <button onClick={() => setPermissionTarget(null)}>×</button>
-                </div>
-                <div className="stream-modal-content">
-                  <p>Escolha o cargo mínimo para entrar. A alteração é protegida pelas regras do Firebase.</p>
-                  {(['member', 'admin', 'owner'] as AccessLevel[]).map((level) => (
-                    <button className="access-choice" key={level} onClick={() => void savePermission(level)}>
-                      {accessLabel[level]}
-                      {(permissionTarget.kind === 'category'
-                        ? categoryAccess[permissionTarget.id]
-                        : channelAccess[permissionTarget.id]) === level
-                        ? ' ✓'
-                        : ''}
-                    </button>
-                  ))}
-                </div>
-              </section>
-            </div>
-          )}
-          {showStreamSettings && (
-            <div
-              className="stream-modal-backdrop"
-              onMouseDown={(e) => {
-                if (e.target === e.currentTarget) setShowStreamSettings(false);
-              }}
-            >
-              <section
-                className="stream-modal"
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="stream-modal-title"
-              >
-                <div className="stream-modal-header">
-                  <div>
-                    <span className="stream-modal-kicker">NIMBO · LIVE</span>
-                    <h2 id="stream-modal-title">Configurações da transmissão</h2>
-                  </div>
-                  <button
-                    className="stream-modal-close"
-                    title="Fechar"
-                    onClick={() => setShowStreamSettings(false)}
-                  >
-                    ×
-                  </button>
-                </div>
-                <div className="stream-modal-content">
-                  <label>Captura de vídeo</label>
-                  <select
-                    value={captureMode}
-                    disabled={live}
-                    onChange={(e) => setCaptureMode(e.target.value as 'screen' | 'window' | 'camera')}
-                  >
-                    <option value="screen">Tela inteira (recomendado para jogos)</option>
-                    <option value="camera">Webcam</option>
-                    <option value="window">Janela de aplicativo</option>
-                  </select>
-                  <label>Qualidade</label>
-                  <select
-                    value={quality}
-                    disabled={live}
-                    onChange={(e) => setQuality(Number(e.target.value))}
-                  >
-                    <option value={1080}>1080p · 60 FPS</option>
-                    <option value={720}>720p</option>
-                  </select>
-                  <label>FPS da transmissão</label>
-                  <select
-                    value={frameRate}
-                    disabled={live}
-                    onChange={(e) => setFrameRate(Number(e.target.value))}
-                  >
-                    <option value={60}>60 FPS</option>
-                    <option value={30}>30 FPS (economia de banda)</option>
-                  </select>
-                  <label>Origem do áudio</label>
-                  <select
-                    value={audioMode}
-                    disabled={live}
-                    onChange={(e) => setAudioMode(e.target.value as 'window' | 'system' | 'none')}
-                  >
-                    <option value="window">Somente áudio da janela (jogo)</option>
-                    <option value="system">Todo o áudio do computador</option>
-                    <option value="none">Sem áudio</option>
-                  </select>
-                  <p>
-                    As opções ficam bloqueadas enquanto você transmite. A captura de áudio depende do
-                    navegador e do aplicativo.
-                  </p>
-                </div>
-                <div className="stream-modal-footer">
-                  <span>{live ? '● Transmissão em andamento' : 'Pronto para compartilhar'}</span>
-                  <button onClick={() => setShowStreamSettings(false)}>Concluído</button>
-                </div>
-              </section>
-            </div>
-          )}
-          {toast && (
-            <div className={'nimbo-toast ' + toast.type} role="status" aria-live="polite">
-              <span className="toast-symbol">
-                {toast.type === 'success' ? '✓' : toast.type === 'error' ? '!' : '…'}
-              </span>
-              <span>{toast.text}</span>
-              <button aria-label="Fechar aviso" onClick={() => setToast(null)}>
-                ×
-              </button>
-            </div>
-          )}
-          <div
-            className={
-              'status status-feedback ' +
-              (busy
-                ? 'is-busy'
-                : /erro|falha|não foi|permission|negado|inválido|não é possível/i.test(status)
-                  ? 'is-error'
-                  : '')
+    <div className="app">
+      <Sidebar
+        uid={uid}
+        data={data}
+        presence={presence}
+        room={room}
+        disabled={live.busy === 'joining'}
+        adminOpen={adminOpen}
+        onJoin={(id) => void join(id)}
+        onWatch={(id, member) => void join(id, member)}
+        onOpenAdmin={() => setAdminOpen((v) => !v)}
+        onPermission={setPermission}
+        onCreateChannel={(id) => void createChannelIn(id)}
+        onRemoveSession={(id, member) =>
+          void removeRoomSession(id, member).then(
+            () => toast.success('Sessão removida'),
+            (e) => toast.error(e),
+          )
+        }
+        footer={
+          <UserPanel
+            channelName={channelName}
+            joined={snapshot.joined}
+            online={snapshot.online}
+            liveKind={snapshot.localKind}
+            busy={live.busy}
+            nickname={nickname}
+            roleLabel={roleLabel[role]}
+            onLeave={() => void live.leave()}
+            onToggle={(kind) => void toggleBroadcast(kind)}
+            onStreamSettings={() => setShowStreamSettings(true)}
+            onInvite={() =>
+              void navigator.clipboard.writeText(`${location.origin}/?room=${encodeURIComponent(room)}`).then(
+                () => toast.success('Convite copiado'),
+                (e) => toast.error(e),
+              )
             }
-            role="status"
-            aria-live="polite"
-          >
-            {busy ? '◌' : '●'} {status}
+            onProfile={() => setShowProfile(true)}
+            onSignOut={() => void live.leave().then(() => signOutAccount())}
+          />
+        }
+      />
+      <main className="content">
+        {adminOpen && staff ? (
+          <AdminPanel
+            uid={uid}
+            data={data}
+            onClose={() => setAdminOpen(false)}
+            onPermission={setPermission}
+            onCreateChannel={(id) => void createChannelIn(id)}
+          />
+        ) : snapshot.joined ? (
+          <Stage
+            uid={uid}
+            channelName={channelName}
+            live={snapshot}
+            visible={visible}
+            setVisible={setVisible}
+            nameOf={nameOf}
+          />
+        ) : (
+          <div className="home">
+            <img src="/nimbo-mascot.svg" alt="" />
+            <h1>Olá, {nickname}</h1>
+            <p className="muted">Escolha um canal na barra lateral para assistir às lives ou transmitir.</p>
           </div>
-        </main>
-      </div>
-      <footer>Nimbo beta · Firebase Spark · Sem Cloud Functions</footer>
+        )}
+      </main>
+
+      {permission && (
+        <PermissionModal
+          key={permission.kind + permission.id}
+          title={(permission.kind === 'category' ? 'Categoria ' : 'Canal ') + permissionName}
+          current={permissionLevel}
+          allowOwner={role === 'owner'}
+          onClose={() => setPermission(null)}
+          onSave={async (level) => {
+            try {
+              if (permission.kind === 'category') await setCategoryAccess(permission.id, level);
+              else await setChannelAccess(permission.id, level);
+              toast.success('Permissão atualizada');
+              setPermission(null);
+            } catch (e) {
+              toast.error(e);
+            }
+          }}
+        />
+      )}
+      {showStreamSettings && (
+        <StreamSettingsModal
+          settings={capture}
+          live={Boolean(snapshot.localKind)}
+          onChange={(next) => {
+            setCapture(next);
+            saveCaptureSettings(next);
+          }}
+          onClose={() => setShowStreamSettings(false)}
+        />
+      )}
+      {showProfile && (
+        <Modal title="Seu perfil" kicker="CONTA" size="sm" onClose={() => setShowProfile(false)}>
+          <NicknameForm
+            initial={nickname}
+            submitLabel="Salvar"
+            onSubmit={async (name) => {
+              await saveProfile(uid, name);
+              toast.success('Perfil atualizado');
+              setShowProfile(false);
+            }}
+          />
+        </Modal>
+      )}
     </div>
   );
 }
