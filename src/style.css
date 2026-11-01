@@ -247,3 +247,21 @@
 .status-feedback.is-busy{display:block}
 
 .status-feedback.is-error{display:block;border-color:#b66a78;color:#ffccd4;background:#3b2031}
+
+
+/* Streamlined Nimbo navigation and player */
+.community-shell{height:100dvh}
+.server-heading{gap:9px}
+.server-private{margin-left:auto}
+.server-admin-gear{flex-shrink:0;background:transparent;color:#aebbd4;border:1px solid transparent;font-size:18px;border-radius:8px;padding:5px 8px}
+.server-admin-gear:hover,.server-admin-gear.active{background:#302c58;color:#fff;border-color:#5b518d}
+.participant-live-icon{font-size:14px;filter:saturate(.8)}
+.live-tile-audio{display:none}
+.live-player{position:relative;background:#040912;min-width:0}
+.live-player video{width:100%;height:auto;aspect-ratio:16/9;object-fit:contain;display:block}
+.live-player-controls{position:absolute;bottom:8px;left:8px;right:8px;display:flex;align-items:center;gap:9px;opacity:.12;transition:opacity .15s;background:#0b102dcc;padding:7px 9px;border-radius:9px}
+.live-player:hover .live-player-controls,.live-player:focus-within .live-player-controls{opacity:1}
+.live-player-controls button{padding:5px 9px;border-radius:7px;background:#303e61;font-size:15px}
+.live-player-controls input[type=range]{width:100px;accent-color:#8d81ff}
+.live-player-controls button:last-child{margin-left:auto}
+.live-on-air{font-size:9px;letter-spacing:.8px;border-radius:5px;background:#5b2345;color:#ffb5ce;padding:3px 6px;margin-left:5px}
