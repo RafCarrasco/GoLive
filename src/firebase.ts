@@ -10,9 +10,9 @@ const firebaseConfig = {
   messagingSenderId: '376998430369',
   appId: '1:376998430369:web:d1ab25dc2e7e50adf992e0',
   measurementId: 'G-EG6G1SNXHY',
-  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || 'https://golive-ad118-default-rtdb.firebaseio.com',
+  databaseURL:
+    import.meta.env.VITE_FIREBASE_DATABASE_URL || 'https://golive-ad118-default-rtdb.firebaseio.com',
 };
 export const configured = Boolean(firebaseConfig.databaseURL);
 const app = initializeApp(firebaseConfig);
 export const db = getDatabase(app);
-
