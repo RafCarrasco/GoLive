@@ -316,3 +316,17 @@
 .community-sidebar .sidebar-preferences{padding:10px 12px}
 .stage-viewer-hint{margin-left:auto;font-size:11px;color:#b7c4dd}
 .multiview-grid .stage-overlay-controls{justify-content:flex-start}
+
+
+/* Consistent live indicators and action notifications */
+.ui-icon,.participant-live-icon{display:inline-flex;align-items:center;justify-content:center;color:#ff657d;font-weight:900;font-size:16px;line-height:1}
+.sidebar-participant.is-live .participant-live-icon{color:#ff5f70;filter:none}
+.sidebar-participant.is-live .participant-label small{color:#ff8495}
+.sidebar-connection-dot{color:#58d699}
+.live-on-air{background:#5a263a;color:#ffc4cc}
+.nimbo-toast{position:fixed;right:24px;bottom:24px;z-index:500;display:flex;align-items:center;gap:12px;max-width:min(420px,calc(100vw - 30px));padding:13px 15px;border:1px solid #556785;border-radius:12px;color:#f2f6ff;background:#202e49;box-shadow:0 18px 55px #0008;font-size:13px}
+.nimbo-toast.success{border-color:#34895d;background:#173e34}
+.nimbo-toast.error{border-color:#ac4557;background:#4a202d}
+.nimbo-toast.info{border-color:#7767d8;background:#2b2850}
+.toast-symbol{display:grid;place-items:center;width:26px;height:26px;flex:none;border-radius:50%;background:#ffffff22;font-size:16px}
+.nimbo-toast>button{margin-left:auto;border:0;background:transparent;color:#dce5f6;font-size:18px;padding:0 4px}
