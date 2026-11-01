@@ -68,6 +68,13 @@
           ".write": "auth != null && auth.uid === $uid && auth.token.email === newData.child('email').val() && auth.token.firebase.sign_in_provider !== 'anonymous'",
           ".validate": "newData.hasChildren(['email','createdAt'])"
         }
+      },
+      "categories": {
+        ".read": "auth != null && root.child('community/approved').child(auth.uid).val() === true",
+        "$id": {
+          ".write": "auth != null && root.child('community/approved').child(auth.uid).val() === true && (root.child('community/roles').child(auth.uid).val() === 'owner' || root.child('community/roles').child(auth.uid).val() === 'admin') && $id !== 'lives'",
+          ".validate": "newData.hasChildren(['name','createdAt','createdBy','order']) && newData.child('name').isString() && newData.child('name').val().length >= 2 && newData.child('name').val().length <= 32 && newData.child('createdAt').isNumber() && newData.child('order').isNumber() && newData.child('createdBy').isString()"
+        }
       }
     }
   }
