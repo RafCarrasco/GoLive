@@ -12,7 +12,7 @@ jobs:
   build:
     runs-on: windows-latest
     permissions:
-      contents: read
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -38,3 +38,20 @@ jobs:
           name: GoLive-Windows-Portable
           path: release/GoLive-Portable.exe
           if-no-files-found: error
+
+      - name: Publish beta release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.1.0-beta.${{ github.run_number }}
+          name: GoLive Windows Beta #${{ github.run_number }}
+          prerelease: true
+          make_latest: false
+          generate_release_notes: false
+          body: |
+            Versão experimental para Windows. O aplicativo abre o GoLive do navegador em uma janela dedicada.
+            Captura de tela e áudio ainda têm limitações, inclusive para jogos em tela cheia exclusiva.
+            Arquivo: GoLive-Portable.exe (sem instalador).
+            O executável ainda não é assinado digitalmente e pode apresentar um aviso do Windows SmartScreen.
+          files: release/GoLive-Portable.exe
+          fail_on_unmatched_files: true
