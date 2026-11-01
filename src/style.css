@@ -47,3 +47,17 @@
 .viewer-tools input[type=range]:focus-visible{outline:2px solid #b2aaff;outline-offset:5px}
 .volume-number{min-width:37px;font-size:12px;font-variant-numeric:tabular-nums;color:#c5cee0;text-align:right}
 @media(max-width:850px){.viewer-tools input[type=range]{width:86px}}
+
+
+/* Community desktop shell */
+.community-shell{display:flex;flex:1;min-height:0;width:100%}
+.community-shell>main{min-width:0;flex:1}
+.community-sidebar{width:230px;flex:0 0 230px;background:#111827;border-right:1px solid #2b3650;padding:16px 12px;display:flex;flex-direction:column;gap:8px;overflow-y:auto}
+.sidebar-section-title{font-size:11px;letter-spacing:1.5px;color:#8e9ebc;margin:14px 8px 6px;font-weight:800}
+.sidebar-channel{width:100%;display:block;text-align:left;padding:11px 13px;border-radius:9px;color:#ced8ec;background:transparent;font-weight:550;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+.sidebar-channel.active{background:#353357;color:#fff}
+.community-sidebar input{width:100%;font-size:13px}
+.community-sidebar>button:not(.sidebar-channel),.admin-section button{font-size:12px;padding:9px}
+.admin-section{display:flex;flex-direction:column;gap:8px}
+@media(min-width:851px){.community-shell>main:has(.layout){padding:12px 18px 7px;overflow:hidden}.community-shell>main:has(.layout) h1,.community-shell>main:has(.layout) .subtitle{display:none}}
+@media(max-width:850px){.community-shell{flex-direction:column}.community-sidebar{width:100%;flex-basis:auto;max-height:185px;padding:8px 14px}.community-shell>main{padding:16px}}
