@@ -22,3 +22,11 @@ export async function createChannel(uid:string,name:string,description:string,ca
 export async function editChannel(id:string,fields:Partial<Pick<Channel,'name'|'description'|'enabled'|'categoryId'>>){await update(ref(db,'community/channels/'+id),fields)}
 export async function deleteChannel(id:string){if(id==='geral'||id==='competitivo')throw Error('Canais padrão não podem ser excluídos');await remove(ref(db,'community/channels/'+id))}
 export async function assignRole(uid:string,role:CommunityRole){await set(ref(db,'community/roles/'+uid),role)}
+
+export type AccessLevel='member'|'admin'|'owner';
+export const accessLabel:Record<AccessLevel,string>={member:'Todos os membros',admin:'Administradores e proprietário',owner:'Somente proprietário'};
+export const watchCategoryAccess=(cb:(v:Record<string,AccessLevel>)=>void)=>onValue(ref(db,'community/categoryAccess'),s=>cb(s.val()||{}));
+export const watchChannelAccess=(cb:(v:Record<string,AccessLevel>)=>void)=>onValue(ref(db,'community/channelAccess'),s=>cb(s.val()||{}));
+export const setCategoryAccess=(id:string,level:AccessLevel)=>set(ref(db,'community/categoryAccess/'+id),level);
+export const setChannelAccess=(id:string,level:AccessLevel)=>set(ref(db,'community/channelAccess/'+id),level);
+export function canAccess(level:AccessLevel,role:CommunityRole){return level==='member'||role==='owner'||level==='admin'&&role==='admin'}
