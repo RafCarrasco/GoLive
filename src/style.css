@@ -209,3 +209,16 @@
 .stream-modal-content p{font-size:11px;color:#96a7c0;line-height:1.5;margin:8px 0}
 .stream-modal-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#111a2c;padding:15px 22px;border-top:1px solid #303e59}
 .stream-modal-footer span{font-size:11px;color:#a9bed2}.stream-modal-footer button{padding:10px 18px}
+
+
+/* Access requests: explicit progress and realtime approval status */
+.approval-section{display:flex;flex-direction:column;gap:8px}
+.approval-section-heading{display:flex;align-items:center;gap:9px;color:#e2e9f6;font-size:14px}
+.approval-section-heading span{min-width:22px;text-align:center;padding:3px 7px;border-radius:12px;background:#544b96;font-size:11px}
+.approval-entry>div{display:flex;flex-direction:column;gap:6px;min-width:0}
+.approval-entry strong{font-size:13px;overflow-wrap:anywhere}
+.approval-entry small{font-size:11px;color:#a9b6cc}
+.approval-entry button{flex-shrink:0}
+.approval-feedback{margin:9px 0;padding:11px 13px;border-radius:9px;background:#263653;border:1px solid #53638b;color:#d5e5ff;font-size:12px}
+.approval-empty{color:#9aaec8;font-size:12px;margin:8px 0 16px}
+.approved-tag{color:#75dfaa;font-size:12px}
