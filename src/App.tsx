@@ -21,7 +21,7 @@ const stream=useRef<MediaStream|null>(null),peers=useRef<Record<string,RTCPeerCo
 const seen=useRef(new Set<string>()),cleanups=useRef<Array<()=>void>>([]),buffers=useRef<Record<string,RTCIceCandidateInit[]>>({});
 const roomRef=useRef(''),hostRef=useRef(false),uidRef=useRef('');
 useEffect(()=>{if(!uid||!approved)return;const unsubs=[watchChannels(setChannels),watchProfiles(setProfiles),watchRoles(setRoles)];return()=>unsubs.forEach(u=>u())},[uid,approved]);
-useEffect(()=>{if(!uid)return;const unsubs=[onValue(ref(db,'community/approved/'+uid),s=>setApproved(s.val()===true),e=>setStatus(err(e)))];return()=>unsubs.forEach(u=>u())},[uid]);
+useEffect(()=>{if(!uid)return;const unsub=onValue(ref(db,'community/approved/'+uid),s=>setApproved(s.val()===true),e=>setStatus(err(e)));return()=>unsub()},[uid]);
 useEffect(()=>{if(!uid||roles[uid]!=='owner')return;return onValue(ref(db,'community/requests'),s=>setAccessRequests(s.val()||{}),e=>setStatus(err(e)))},[uid,roles]);
 useEffect(()=>{if(uid)setDisplayName(profiles[uid]?.displayName||'')},[uid,profiles]);
 useEffect(()=>{if(!configured){setStatus('Configure o arquivo .env com dados do Firebase');return;}const unsubscribe=observeUser(user=>{uidRef.current=user?.uid||'';setUid(user?.uid||'');setApproved(false);setAuthReady(true);if(user&&user.email){void set(ref(db,'community/requests/'+user.uid),{email:user.email,createdAt:Date.now()}).catch(()=>{})}});return()=>{unsubscribe();cleanups.current.forEach(f=>f());Object.values(peers.current).forEach(p=>p.close());stream.current?.getTracks().forEach(t=>t.stop())}},[]);
