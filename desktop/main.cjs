@@ -6,7 +6,7 @@ function chooseCaptureSource(){
   return new Promise(async(resolve)=>{
     let settled=false;
     const settle=(result)=>{if(settled)return;settled=true;ipcMain.removeHandler('golive:capture:list');ipcMain.removeHandler('golive:capture:choose');ipcMain.removeHandler('golive:capture:cancel');if(!picker.isDestroyed())picker.close();resolve(result)};
-    const picker=new BrowserWindow({parent:mainWindow,modal:true,width:850,height:560,minWidth:680,minHeight:480,title:'GoLive · Selecionar transmissão',backgroundColor:'#0f1426',show:false,autoHideMenuBar:true,webPreferences:{preload:path.join(__dirname,'capture-preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
+    const picker=new BrowserWindow({parent:mainWindow,modal:true,width:850,height:560,minWidth:680,minHeight:480,title:'Nimbo · Selecionar transmissão',backgroundColor:'#0f1426',show:false,autoHideMenuBar:true,webPreferences:{preload:path.join(__dirname,'capture-preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
     picker.on('closed',()=>settle(null));
     const authorized=(event)=>event.sender===picker.webContents;
     ipcMain.handle('golive:capture:list',async(event)=>{
@@ -36,7 +36,7 @@ app.whenReady().then(async()=>{
       callback({video:selected.source,...(selected.audio?{audio:'loopback'}:{})});
     }catch(e){console.error(e);callback({});}
   });
-  mainWindow=new BrowserWindow({width:1280,height:800,minWidth:850,minHeight:590,title:'GoLive',backgroundColor:'#0b1020',autoHideMenuBar:true,webPreferences:{contextIsolation:true,nodeIntegration:false,sandbox:true}});
+  mainWindow=new BrowserWindow({width:1280,height:800,minWidth:850,minHeight:590,title:'Nimbo',backgroundColor:'#0b1020',autoHideMenuBar:true,webPreferences:{contextIsolation:true,nodeIntegration:false,sandbox:true}});
   mainWindow.webContents.setWindowOpenHandler(({url})=>{if(url.startsWith('https:'))void shell.openExternal(url);return {action:'deny'}});
   await mainWindow.loadURL('https://golive-ad118.web.app');
 });
