@@ -3,16 +3,24 @@
     "rooms": {
       "$room": {
         ".read": "auth != null && data.exists()",
-        ".write": "auth != null && ((!data.exists() && newData.child('host').val() === auth.uid && newData.child('members').child(auth.uid).exists()) || (data.exists() && data.child('host').val() === auth.uid))",
+        ".write": "auth != null && ((!data.exists() && newData.exists() && newData.child('host').val() === auth.uid && newData.child('members').child(auth.uid).exists()) || (data.exists() && !newData.exists() && data.child('host').val() === auth.uid))",
+        ".validate": "newData.child('host').isString() && newData.child('members').childrenCount <= 5",
+        "live": {
+          ".write": "auth != null && data.parent().child('host').val() === auth.uid",
+          ".validate": "newData.isBoolean()"
+        },
         "members": {
           "$uid": {
-            ".write": "auth != null && auth.uid === $uid && data.parent().parent().child('host').exists() && ((!data.exists() && newData.exists() && newData.parent().childrenCount <= 5) || data.exists())"
+            ".write": "auth != null && auth.uid === $uid && data.parent().parent().child('host').exists() && (!newData.exists() || data.exists() || data.parent().childrenCount < 5)",
+            ".validate": "newData.hasChild('joinedAt') && newData.child('joinedAt').isNumber()"
           }
         },
         "signals": {
           "$recipient": {
             "$sender": {
-              ".write": "auth != null && auth.uid === $sender && data.parent().parent().parent().child('members').child(auth.uid).exists() && data.parent().parent().parent().child('members').child($recipient).exists()"
+              "$message": {
+                ".write": "auth != null && ((auth.uid === $sender && root.child('rooms').child($room).child('members').child($sender).exists() && root.child('rooms').child($room).child('members').child($recipient).exists()) || (auth.uid === $recipient && !newData.exists()))"
+              }
             }
           }
         }
