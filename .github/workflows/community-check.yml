@@ -1,7 +1,7 @@
 name: Community validation
 on:
   push:
-    branches: ['feat/community-foundation']
+    branches: ['feat/community-foundation', 'feat/private-community-live-experience']
   pull_request:
     branches: [main]
 jobs:
