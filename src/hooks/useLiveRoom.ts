@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { db, useEmulators } from '../firebase';
-import { LiveRoom, type LiveSnapshot } from '../live/room';
+import { LiveRoom, testTurn, type LiveSnapshot } from '../live/room';
 import {
   captureCamera,
   captureScreen,
@@ -112,14 +112,15 @@ export function useLiveRoom(uid: string, handlers: Handlers) {
 
   const retry = useCallback((id: string) => current.current?.retry(id), []);
 
-  // Suporte: rodar nimboDebug() no console mostra o estado de cada conexão P2P.
+  // Suporte no console: nimboDebug() mostra cada conexão P2P; nimboTurnTest() confere o TURN.
   useEffect(() => {
-    const w = window as unknown as { nimboDebug?: () => Promise<unknown> };
+    const w = window as unknown as Record<string, () => Promise<unknown>>;
     w.nimboDebug = async () => {
       const result = (await current.current?.diagnostics()) || [];
       console.table(result);
       return result;
     };
+    w.nimboTurnTest = testTurn;
   }, []);
 
   useEffect(() => {

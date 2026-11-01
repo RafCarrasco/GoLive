@@ -77,6 +77,25 @@ const ICE: RTCConfiguration = {
 
 export const MAX_MEMBERS = 20;
 
+// Confere se o TURN configurado responde: força uma conexão só por relay e espera um candidato dele.
+export async function testTurn(timeoutMs = 8000) {
+  if (!turnUrls.length) return { configured: false, works: false };
+  const pc = new RTCPeerConnection({ ...ICE, iceTransportPolicy: 'relay' });
+  pc.createDataChannel('turn-test');
+  const works = await new Promise<boolean>((resolve) => {
+    const timer = setTimeout(() => resolve(false), timeoutMs);
+    pc.onicecandidate = ({ candidate }) => {
+      if (candidate?.type === 'relay') {
+        clearTimeout(timer);
+        resolve(true);
+      }
+    };
+    void pc.createOffer().then((offer) => pc.setLocalDescription(offer));
+  });
+  pc.close();
+  return { configured: true, works };
+}
+
 const clean = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 
 export class LiveRoom {
