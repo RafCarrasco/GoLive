@@ -330,3 +330,17 @@
 .nimbo-toast.info{border-color:#7767d8;background:#2b2850}
 .toast-symbol{display:grid;place-items:center;width:26px;height:26px;flex:none;border-radius:50%;background:#ffffff22;font-size:16px}
 .nimbo-toast>button{margin-left:auto;border:0;background:transparent;color:#dce5f6;font-size:18px;padding:0 4px}
+
+
+/* Role-based channel controls */
+.sidebar-category{position:relative}
+.sidebar-category>.sidebar-section-toggle{width:calc(100% - 31px);display:inline-flex;vertical-align:middle}
+.sidebar-settings-icon,.sidebar-channel-settings{background:transparent;border:0;color:#91a2be;padding:5px 7px;font-size:14px;border-radius:6px}
+.sidebar-settings-icon:hover,.sidebar-channel-settings:hover{color:white;background:#393359}
+.sidebar-channel-group{position:relative}
+.sidebar-channel-group>.sidebar-channel{width:calc(100% - 26px)}
+.sidebar-channel-settings{position:absolute;right:0;top:5px;font-size:13px;z-index:1}
+.restricted-icon{font-size:11px;color:#b4a2e7}
+.access-choice{background:#222f4a;border:1px solid #394a6d;color:#d8e4fa;text-align:left;padding:13px;border-radius:10px;width:100%;font-size:13px}
+.access-choice:hover{background:#4b428e}
+.role-pill{font-size:11px;border:1px solid #4c5682;border-radius:7px;padding:5px 8px;color:#c4baf2}
