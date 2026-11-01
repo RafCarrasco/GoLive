@@ -94,3 +94,20 @@
 .account-gate h1{font-size:38px}.account-gate p{color:#aebed3;line-height:1.5}.account-gate form{display:flex;flex-direction:column;gap:12px;margin-top:22px}.account-gate form input{width:100%}
 .layout-toolbar{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.layout-toolbar button{font-size:12px;padding:7px 10px;background:#26334f}.layout-toolbar button.active{background:#756bf8}.layout-toolbar select{padding:7px;font-size:12px}
 .multiview-grid.focus{grid-template-columns:1fr}.multiview-grid.focus .live-tile video{max-height:65vh}
+
+
+/* Nimbo login */
+.auth-page{min-height:100vh;display:grid;place-items:center;padding:24px}
+.auth-page .account-gate{width:min(440px,100%);margin:0;padding:38px 34px;background:linear-gradient(155deg,#1c2641,#11192d);box-shadow:0 24px 80px #0005;border:1px solid #3b4568;display:flex;flex-direction:column;align-items:center;gap:14px}
+.auth-page .account-gate h1{font-size:44px;margin:0;line-height:1.15}
+.auth-page .account-gate p{margin:0;line-height:1.55}
+.auth-page .account-mark{width:68px;height:68px;border-radius:22px;background:linear-gradient(140deg,#8c7cff,#5145b3);display:grid;place-items:center;font-size:33px;box-shadow:0 12px 28px #5b4fe83d}
+.auth-page .account-subtitle{color:#b3aaf9;font-size:13px;letter-spacing:.3px}
+.auth-page .google-login{width:100%;display:flex;flex-direction:column;align-items:center;gap:12px;margin-top:8px}
+.auth-page .google-login button{width:100%;display:flex;justify-content:center;align-items:center;gap:13px;padding:15px 20px;border-radius:12px;background:#fafaff;color:#25314f;font-size:14px;font-weight:750}
+.auth-page .google-login button:hover{background:#e9e7ff}
+.auth-page .google-g{font-size:19px;font-weight:800;color:#4285f4}
+.auth-page .google-login small{font-size:11px;color:#9eabc4;line-height:1.5}
+.auth-page .pending-note{width:100%;display:flex;flex-direction:column;gap:8px;padding:18px;text-align:left;background:#202b45;border:1px solid #49567a;border-radius:12px;color:#dbe5fa}
+.auth-page .pending-note span{font-size:13px;color:#aab8d0}
+.auth-page .status{margin:4px 0 0;max-width:100%;overflow-wrap:anywhere;color:#b4c5e8}
