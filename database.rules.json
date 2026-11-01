@@ -51,6 +51,20 @@
           ".write": "auth != null && (root.child('community/roles').child(auth.uid).val() === 'owner' || root.child('community/roles').child(auth.uid).val() === 'admin') && $channel !== 'geral' && $channel !== 'competitivo'",
           ".validate": "newData.hasChildren(['name','description','createdBy','createdAt','visibility','enabled']) && newData.child('name').isString() && newData.child('name').val().length >= 2 && newData.child('name').val().length <= 32 && newData.child('description').isString() && newData.child('enabled').isBoolean() && newData.child('visibility').val() === 'public' && newData.child('createdAt').isNumber()"
         }
+      },
+      "approved": {
+        ".read": "auth != null",
+        "$uid": {
+          ".write": "auth != null && root.child('community/roles').child(auth.uid).val() === 'owner'",
+          ".validate": "newData.isBoolean()"
+        }
+      },
+      "requests": {
+        ".read": "auth != null",
+        "$uid": {
+          ".write": "auth != null && auth.uid === $uid",
+          ".validate": "newData.hasChildren(['email','createdAt'])"
+        }
       }
     }
   }
