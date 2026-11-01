@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   channelAllowed,
   createChannel,
@@ -49,6 +49,16 @@ function Community({ uid }: { uid: string }) {
   const room = snapshot.room;
 
   const [visible, setVisible] = useState<string[]>([]);
+  // Logo depois de entrar, as lives que já estavam no ar abrem sozinhas (até 4). A lista do canal
+  // chega um instante depois da entrada, por isso a janela de alguns segundos.
+  const autoOpenUntil = useRef(0);
+  useEffect(() => {
+    if (Date.now() > autoOpenUntil.current) return;
+    const others = Object.keys(snapshot.broadcasts).filter((id) => id !== uid);
+    if (!others.length) return;
+    autoOpenUntil.current = 0;
+    setVisible((ids) => [...new Set([...ids, ...others])].slice(0, 4));
+  }, [snapshot.broadcasts, uid]);
   const [adminOpen, setAdminOpen] = useState(false);
   const [permission, setPermission] = useState<{ kind: 'category' | 'channel'; id: string } | null>(null);
   const [showStreamSettings, setShowStreamSettings] = useState(false);
@@ -77,15 +87,8 @@ function Community({ uid }: { uid: string }) {
       }
       try {
         await live.join(channelId);
-        // Ao entrar, abre as lives que já estão no ar (até 4) ou a escolhida.
-        const streams = presence[channelId]?.streams || {};
-        setVisible(
-          watch
-            ? [watch]
-            : Object.keys(streams)
-                .filter((id) => id !== uid)
-                .slice(0, 4),
-        );
+        setVisible(watch ? [watch] : []);
+        autoOpenUntil.current = watch ? 0 : Date.now() + 5000;
       } catch (e) {
         toast.error(e);
       }

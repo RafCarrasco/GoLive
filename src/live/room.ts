@@ -55,10 +55,14 @@ type Peer = {
 
 // TURN é opcional (VITE_TURN_URLS separado por vírgula, VITE_TURN_USERNAME, VITE_TURN_CREDENTIAL).
 // Sem ele, redes com NAT restritivo não conseguem conexão direta.
-const turnUrls = (import.meta.env.VITE_TURN_URLS || '')
-  .split(',')
-  .map((u: string) => u.trim())
-  .filter(Boolean);
+// Só entra se estiver completo: TURN sem usuário ou senha faz o navegador recusar a conexão inteira.
+const turnUrls =
+  import.meta.env.VITE_TURN_USERNAME && import.meta.env.VITE_TURN_CREDENTIAL
+    ? (import.meta.env.VITE_TURN_URLS || '')
+        .split(',')
+        .map((u: string) => u.trim())
+        .filter(Boolean)
+    : [];
 const ICE: RTCConfiguration = {
   iceServers: [
     { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
@@ -103,6 +107,8 @@ export class LiveRoom {
   private remote: Record<string, MediaStream> = {};
   private failed = new Set<string>();
   private members: string[] = [];
+  // joinedAt identifica a sessão de cada participante: muda quando a pessoa recarrega ou reconecta.
+  private sessions: Record<string, unknown> = {};
   private membersLoaded = false;
   private pendingInbox: Record<string, Record<string, Signal>> | null = null;
   private broadcasts: Record<string, Broadcast> = {};
@@ -174,7 +180,9 @@ export class LiveRoom {
   }
 
   // O onDisconnect é registrado antes da escrita para que uma queda logo após entrar não deixe sessão órfã.
-  private async registerPresence() {
+  private async registerPresence(reset = false) {
+    // Depois de uma queda os outros recriam as conexões com a gente; as antigas daqui não servem mais.
+    if (reset) for (const id of [...this.peers.keys()]) this.closePeer(id);
     await onDisconnect(this.memberRef).remove();
     await set(this.memberRef, { joinedAt: serverTimestamp() });
     if (this.local) await this.publishStream();
@@ -195,7 +203,7 @@ export class LiveRoom {
         else if (wasOffline && this.joined) {
           // O servidor já executou o onDisconnect durante a queda: registra a presença de novo.
           wasOffline = false;
-          void this.registerPresence().catch((e) => this.onIssue(String(e)));
+          void this.registerPresence(true).catch((e) => this.onIssue(String(e)));
         }
         this.emit();
       }),
@@ -203,7 +211,7 @@ export class LiveRoom {
     this.unsubs.push(
       onValue(
         this.path('members'),
-        (snap) => this.onMembers(Object.keys(snap.val() || {})),
+        (snap) => this.onMembers(snap.val() || {}),
         () => this.onIssue('Você perdeu o acesso a este canal', true),
       ),
     );
@@ -223,7 +231,16 @@ export class LiveRoom {
     );
   }
 
-  private onMembers(ids: string[]) {
+  private onMembers(entries: Record<string, { joinedAt?: unknown }>) {
+    const ids = Object.keys(entries);
+    for (const id of ids) {
+      const session = entries[id]?.joinedAt;
+      // Mesma conta numa sessão nova (recarregou a página): a conexão antiga não serve mais, porque a
+      // criptografia do vídeo é negociada por sessão e ficaria preta mesmo com a sinalização em dia.
+      if (id !== this.uid && id in this.sessions && this.sessions[id] !== session) this.closePeer(id);
+      this.sessions[id] = session;
+    }
+    for (const id of Object.keys(this.sessions)) if (!(id in entries)) delete this.sessions[id];
     this.members = ids;
     const firstLoad = !this.membersLoaded;
     this.membersLoaded = true;

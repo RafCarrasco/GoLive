@@ -120,7 +120,7 @@ export function createTestStream(label: string, frameRate = 30): MediaStream {
   const osc = audio.createOscillator();
   osc.frequency.value = 220 + (hue % 200);
   const gain = audio.createGain();
-  gain.gain.value = 0.05;
+  gain.gain.value = 0; // faixa de áudio presente, mas muda (não incomoda quem testa)
   const dest = audio.createMediaStreamDestination();
   osc.connect(gain).connect(dest);
   osc.start();
