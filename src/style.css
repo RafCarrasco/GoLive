@@ -61,3 +61,16 @@
 .admin-section{display:flex;flex-direction:column;gap:8px}
 @media(min-width:851px){.community-shell>main:has(.layout){padding:12px 18px 7px;overflow:hidden}.community-shell>main:has(.layout) h1,.community-shell>main:has(.layout) .subtitle{display:none}}
 @media(max-width:850px){.community-shell{flex-direction:column}.community-sidebar{width:100%;flex-basis:auto;max-height:185px;padding:8px 14px}.community-shell>main{padding:16px}}
+
+
+/* Community moderation and member management */
+.community-admin{background:#151f32;border:1px solid #34435c;border-radius:14px;padding:18px;margin-bottom:14px;max-height:46vh;overflow:auto}
+.community-admin h2{margin:0 0 15px;font-size:20px}
+.community-admin h3{font-size:14px;color:#c5d0eb}
+.admin-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.admin-create{display:flex;gap:8px;margin-bottom:12px}
+.admin-create input{min-width:0;flex:1}
+.admin-entry{display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid #2d3b54;padding:8px 2px;font-size:12px}
+.admin-entry span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.admin-entry button,.admin-entry select{padding:6px 9px;font-size:11px}
+@media(max-width:900px){.admin-grid{grid-template-columns:1fr}.community-admin{max-height:60vh}}
