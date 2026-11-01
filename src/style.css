@@ -222,3 +222,16 @@
 .approval-feedback{margin:9px 0;padding:11px 13px;border-radius:9px;background:#263653;border:1px solid #53638b;color:#d5e5ff;font-size:12px}
 .approval-empty{color:#9aaec8;font-size:12px;margin:8px 0 16px}
 .approved-tag{color:#75dfaa;font-size:12px}
+
+
+/* In-channel people and streaming status */
+.sidebar-room-members{padding:5px 5px 12px 16px;gap:5px;display:flex;flex-direction:column}
+.sidebar-member-caption{padding:6px 10px;font-size:10px;color:#92a3c0}
+.community-sidebar .sidebar-participant{display:flex;align-items:center;gap:8px;width:100%;background:transparent;color:#dae3f5;border:1px solid transparent;text-align:left;padding:7px 8px;border-radius:9px;font-weight:500}
+.community-sidebar .sidebar-participant:hover{background:#25314a}
+.community-sidebar .sidebar-participant.is-live{background:#251f3f;border-color:#524576}
+.participant-avatar{width:27px;height:27px;flex-shrink:0;border-radius:50%;background:linear-gradient(140deg,#7d6bed,#474078);display:grid;place-items:center;color:white;font-weight:800;font-size:12px}
+.participant-label{display:flex;flex:1;min-width:0;flex-direction:column;gap:2px;overflow:hidden;text-overflow:ellipsis;font-size:11px;white-space:nowrap}
+.participant-label small{font-size:10px;color:#9daecb}.sidebar-participant.is-live .participant-label small{color:#ff8999}
+.participant-live-icon{font-size:16px;color:#b2a3ff}
+.broadcast-actions{display:flex;gap:8px;flex-wrap:wrap}.broadcast-actions button:first-child{background:#283651}.broadcast-actions button{font-size:12px}
