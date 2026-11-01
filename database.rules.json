@@ -23,6 +23,12 @@
               }
             }
           }
+        },
+        "streams": {
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid && data.parent().parent().child('members').child(auth.uid).exists()",
+            ".validate": "newData.isBoolean()"
+          }
         }
       }
     }
