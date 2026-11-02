@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  ImageOff,
   LoaderCircle,
   Maximize,
   Minimize,
@@ -70,7 +71,7 @@ export function LiveTile({
     v.addEventListener('resize', frames);
     v.addEventListener('emptied', frames);
     setSlow(false);
-    const timer = setTimeout(() => setSlow(true), 15000);
+    const timer = setTimeout(() => setSlow(true), own ? 8000 : 15000);
     stream?.addEventListener('addtrack', sync);
     stream?.addEventListener('removetrack', sync);
     return () => {
@@ -106,6 +107,9 @@ export function LiveTile({
     if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
     else void tile.current?.requestFullscreen().catch(() => {});
   };
+  // A faixa chegou (a conexão funciona), mas nenhum quadro: a captura de quem transmite está vazia,
+  // típico de jogo em tela cheia exclusiva capturado como janela.
+  const noImage = state === 'playing' && !hasFrames && slow && !camera;
   const VolumeIcon = silent || volume === 0 ? VolumeX : volume < 50 ? Volume1 : Volume2;
 
   return (
@@ -129,14 +133,31 @@ export function LiveTile({
       <video ref={video} autoPlay playsInline muted={silent} />
       {(state !== 'playing' || !hasFrames) && (
         <div className="tile-placeholder">
-          {state === 'failed' ? <WifiOff size={28} /> : <LoaderCircle size={28} className="spin" />}
+          {state === 'failed' ? (
+            <WifiOff size={28} />
+          ) : noImage ? (
+            <ImageOff size={28} />
+          ) : (
+            <LoaderCircle size={28} className="spin" />
+          )}
           <span>
             {state === 'failed'
               ? 'Não foi possível conectar a esta live'
-              : slow
-                ? 'A conexão está demorando…'
-                : 'Conectando à transmissão…'}
+              : noImage
+                ? own
+                  ? 'Sua captura não está gerando imagem'
+                  : 'Conectado, mas sem imagem desta transmissão'
+                : slow
+                  ? 'A conexão está demorando…'
+                  : 'Conectando à transmissão…'}
           </span>
+          {noImage && !compact && (
+            <small className="tile-hint">
+              {own
+                ? 'Jogo em tela cheia não aparece na captura de janela. Use "Janela sem bordas" (ou "Tela cheia em janela") nas opções de vídeo do jogo, ou transmita a tela inteira.'
+                : 'O problema é na captura de quem transmite. Se for um jogo em tela cheia, peça para usar "Janela sem bordas" ou transmitir a tela inteira.'}
+            </small>
+          )}
           {!own && !compact && onRetry && (state === 'failed' || slow) && (
             <button className="button ghost" onClick={onRetry}>
               <RotateCw size={15} /> Tentar de novo

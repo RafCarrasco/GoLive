@@ -8,6 +8,11 @@ contextBridge.exposeInMainWorld('nimboDesktop', {
   setCaptureAudio: (wanted) => ipcRenderer.invoke('nimbo:capture:audio', Boolean(wanted)),
   startAudio: () => ipcRenderer.invoke('nimbo:audio:start'),
   stopAudio: (id) => ipcRenderer.invoke('nimbo:audio:stop', String(id)),
+  watchUpdate: (onReady) => {
+    ipcRenderer.on('nimbo:update:ready', (_event, info) => onReady(info));
+    return ipcRenderer.invoke('nimbo:update:watch');
+  },
+  installUpdate: () => ipcRenderer.invoke('nimbo:update:install'),
   onAudio: (id, onData, onEnd) => {
     const data = (_event, sessionId, chunk) => {
       if (sessionId === id) onData(chunk);

@@ -302,14 +302,33 @@ app.on('before-quit', () => {
 // ---------- Atualização automática ----------
 // O app instalado confere o último Release do GitHub ao abrir e a cada 6 horas; a versão nova é
 // baixada em segundo plano e entra ao reiniciar (ou na próxima vez que o app abrir).
+// Com o site aberto, o aviso aparece no próprio Nimbo; a caixa do Windows fica só de reserva.
+let updater = null;
+let updateReady = null;
+let updateWatcher = null;
+
+handleApp('nimbo:update:watch', (event) => {
+  updateWatcher = event.sender;
+  return updateReady;
+});
+handleApp('nimbo:update:install', () => {
+  if (updater && updateReady) updater.quitAndInstall();
+});
+
 function setupAutoUpdate() {
   if (!app.isPackaged) return;
   const { autoUpdater } = require('electron-updater');
+  updater = autoUpdater;
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.on('error', (e) => console.warn('[nimbo] atualização:', e?.message || e));
   let asked = false;
   autoUpdater.on('update-downloaded', async (info) => {
+    updateReady = { version: info.version };
+    if (updateWatcher && !updateWatcher.isDestroyed()) {
+      updateWatcher.send('nimbo:update:ready', updateReady);
+      return;
+    }
     if (asked || !mainWindow || mainWindow.isDestroyed()) return;
     asked = true;
     const { response } = await dialog.showMessageBox(mainWindow, {

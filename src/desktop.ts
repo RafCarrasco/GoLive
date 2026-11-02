@@ -9,6 +9,9 @@ type DesktopBridge = {
   startAudio(): Promise<Result<{ id: string; label: string } | null>>;
   stopAudio(id: string): Promise<void>;
   onAudio(id: string, onData: (chunk: Uint8Array) => void, onEnd: (error: string) => void): () => void;
+  // A partir do app 0.3.2: aviso de atualização baixada, mostrado pelo site.
+  watchUpdate?(onReady: (info: { version: string }) => void): Promise<Result<{ version: string } | null>>;
+  installUpdate?(): Promise<void>;
 };
 
 export const desktop = (window as { nimboDesktop?: DesktopBridge }).nimboDesktop;

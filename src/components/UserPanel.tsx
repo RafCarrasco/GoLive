@@ -14,6 +14,7 @@ import {
   WifiOff,
 } from 'lucide-react';
 import type { StreamKind } from '../live/capture';
+import { APP_VERSION, SITE_VERSION } from '../lib/version';
 
 // Rodapé da barra lateral: conexão com o canal, controles de transmissão e conta.
 export function UserPanel({
@@ -134,6 +135,10 @@ export function UserPanel({
         <button className="icon-button" title="Sair da conta" aria-label="Sair da conta" onClick={onSignOut}>
           <LogOut size={16} />
         </button>
+      </div>
+      <div className="version-line">
+        Nimbo {SITE_VERSION}
+        {APP_VERSION && ` · app ${APP_VERSION}`}
       </div>
     </footer>
   );

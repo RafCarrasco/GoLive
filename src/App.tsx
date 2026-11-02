@@ -21,6 +21,7 @@ import { signOutAccount } from './session';
 import { LoadingScreen, LoginScreen, NicknameScreen, PendingScreen } from './components/AuthScreens';
 import { Sidebar } from './components/Sidebar';
 import { UserPanel } from './components/UserPanel';
+import { UpdateBanner } from './components/UpdateBanner';
 import { Stage } from './components/Stage';
 import { AdminPanel } from './components/AdminPanel';
 import { NicknameForm, PermissionModal, StreamSettingsModal } from './components/Modals';
@@ -191,6 +192,7 @@ function Community({ uid }: { uid: string }) {
 
   return (
     <div className="app">
+      <UpdateBanner live={Object.keys(snapshot.local).length > 0} />
       <Sidebar
         uid={uid}
         data={data}
