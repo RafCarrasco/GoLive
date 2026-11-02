@@ -78,7 +78,8 @@ type Peer = {
 };
 
 type LocalLive = {
-  // Stream atual (muda ao trocar de tela) e o anunciado na negociação (fixo enquanto a live durar).
+  // Stream atual (muda ao trocar de tela) e o anunciado na negociação (fixo por tipo enquanto você
+  // estiver no canal, para a mesma conexão servir de novo quando a live recomeçar).
   stream: MediaStream;
   announced: MediaStream;
   bitrate: number;
@@ -145,6 +146,7 @@ export class LiveRoom {
   private pendingInbox: Record<string, Record<string, Signal>> | null = null;
   private broadcasts: Broadcasts = {};
   private locals = new Map<StreamKind, LocalLive>();
+  private announced = new Map<StreamKind, MediaStream>();
   private unsubs: Array<() => void> = [];
   private seen = new Set<string>();
   private joined = false;
@@ -391,27 +393,42 @@ export class LiveRoom {
       track.onunmute = () => this.emit();
       this.emit();
     };
-    for (const kind of this.locals.keys()) this.attachLocal(peer, kind);
+    for (const kind of this.locals.keys()) this.syncSenders(peer, kind);
     return peer;
   }
 
-  private attachLocal(peer: Peer, kind: StreamKind) {
+  // Põe nos envios desta conexão as faixas atuais da live (ou nada, se ela parou). Os canais de envio
+  // nunca são desmontados: parar, recomeçar ou trocar de tela só troca a faixa, sem renegociar.
+  // Desmontar (transceiver.stop) podia mudar o transporte da conexão inteira e congelar também as
+  // lives que chegam pela mesma conexão.
+  private syncSenders(peer: Peer, kind: StreamKind) {
     const live = this.locals.get(kind);
-    if (!live || peer.transceivers[kind]?.length) return;
-    peer.transceivers[kind] = live.stream.getTracks().map((track) =>
-      peer.pc.addTransceiver(track, {
-        direction: 'sendonly',
-        streams: [live.announced],
-        sendEncodings: track.kind === 'video' ? [{ maxBitrate: live.bitrate }] : undefined,
-      }),
-    );
+    const transceivers = peer.transceivers[kind] || [];
+    for (const trackKind of ['video', 'audio'] as const) {
+      const track = live?.stream.getTracks().find((t) => t.kind === trackKind) || null;
+      const existing = transceivers.find(
+        (t) => t.receiver.track.kind === trackKind && t.currentDirection !== 'stopped',
+      );
+      if (existing) {
+        if (existing.sender.track !== track) void existing.sender.replaceTrack(track).catch(() => {});
+        if (track && live && trackKind === 'video') void this.applyBitrate(existing.sender, live.bitrate);
+      } else if (track && live)
+        transceivers.push(
+          peer.pc.addTransceiver(track, {
+            direction: 'sendonly',
+            streams: [live.announced],
+            sendEncodings: trackKind === 'video' ? [{ maxBitrate: live.bitrate }] : undefined,
+          }),
+        );
+    }
+    if (transceivers.length) peer.transceivers[kind] = transceivers;
   }
 
-  private detachLocal(peer: Peer, kind: StreamKind) {
-    // stop() libera as m-lines e faz o outro lado remover apenas esta faixa: a outra live nossa e as
-    // de outras pessoas que chegam pela mesma conexão continuam intactas.
-    for (const t of peer.transceivers[kind] || []) if (t.currentDirection !== 'stopped') t.stop();
-    delete peer.transceivers[kind];
+  private async applyBitrate(sender: RTCRtpSender, bitrate: number) {
+    const params = sender.getParameters();
+    if (!params.encodings?.length || params.encodings[0].maxBitrate === bitrate) return;
+    params.encodings[0].maxBitrate = bitrate;
+    await sender.setParameters(params).catch(() => {});
   }
 
   private async handle(id: string, peer: Peer, msg: Signal) {
@@ -536,7 +553,9 @@ export class LiveRoom {
 
   async startBroadcast(stream: MediaStream, kind: StreamKind, bitrate: number) {
     if (this.locals.has(kind)) await this.stopBroadcast(kind);
-    this.locals.set(kind, { stream, announced: stream, bitrate, startedAt: Date.now() });
+    let announced = this.announced.get(kind);
+    if (!announced) this.announced.set(kind, (announced = new MediaStream()));
+    this.locals.set(kind, { stream, announced, bitrate, startedAt: Date.now() });
     this.watchEnded(stream, kind);
     try {
       await this.publishStream(kind);
@@ -544,7 +563,7 @@ export class LiveRoom {
       await this.stopBroadcast(kind);
       throw e;
     }
-    for (const id of this.members) if (id !== this.uid) this.attachLocal(this.ensurePeer(id), kind);
+    for (const id of this.members) if (id !== this.uid) this.syncSenders(this.ensurePeer(id), kind);
     this.emit();
   }
 
@@ -562,23 +581,9 @@ export class LiveRoom {
     if (!live) return this.startBroadcast(stream, kind, bitrate);
     const old = live.stream;
     live.stream = stream;
+    live.bitrate = bitrate;
     this.watchEnded(stream, kind);
-    const next = { video: stream.getVideoTracks()[0] || null, audio: stream.getAudioTracks()[0] || null };
-    for (const peer of this.peers.values()) {
-      const transceivers = peer.transceivers[kind] || [];
-      for (const trackKind of ['video', 'audio'] as const) {
-        const existing = transceivers.find(
-          (t) => t.receiver.track.kind === trackKind && t.currentDirection !== 'stopped',
-        );
-        const track = next[trackKind];
-        if (existing) await existing.sender.replaceTrack(track).catch(() => {});
-        else if (track)
-          transceivers.push(
-            peer.pc.addTransceiver(track, { direction: 'sendonly', streams: [live.announced] }),
-          );
-      }
-      peer.transceivers[kind] = transceivers;
-    }
+    for (const peer of this.peers.values()) this.syncSenders(peer, kind);
     old.getTracks().forEach((t) => t.stop());
     this.emit();
   }
@@ -589,7 +594,7 @@ export class LiveRoom {
       const live = this.locals.get(k);
       if (!live) continue;
       this.locals.delete(k);
-      for (const peer of this.peers.values()) this.detachLocal(peer, k);
+      for (const peer of this.peers.values()) this.syncSenders(peer, k);
       live.stream.getTracks().forEach((t) => t.stop());
       this.emit();
       await remove(this.path(`streams/${this.uid}/${k}`)).catch(() => {});
