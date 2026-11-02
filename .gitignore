@@ -7,3 +7,5 @@ dist
 database-debug.log
 *.log
 tsconfig.tsbuildinfo
+desktop/bin/
+release/

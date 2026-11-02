@@ -1,3 +1,5 @@
+import { desktop, desktopAudioTrack } from '../desktop';
+
 export type StreamKind = 'screen' | 'camera';
 export type CaptureSurface = 'monitor' | 'window';
 export type AudioMode = 'window' | 'system' | 'none';
@@ -57,6 +59,7 @@ type DisplayOptions = DisplayMediaStreamOptions & {
 
 export async function captureScreen(settings: CaptureSettings): Promise<MediaStream> {
   const wantsAudio = settings.audio !== 'none';
+  if (desktop) return captureScreenDesktop(settings, wantsAudio);
   const options: DisplayOptions = {
     video: { ...videoConstraints(settings), displaySurface: settings.surface } as MediaTrackConstraints,
     // restrictOwnAudio impede que o áudio das lives tocando no próprio Nimbo seja recapturado
@@ -82,11 +85,29 @@ export async function captureScreen(settings: CaptureSettings): Promise<MediaStr
   return stream;
 }
 
+// No app, o seletor nativo escolhe a fonte e o áudio vem do capturador do Windows, que deixa o
+// som do próprio Nimbo de fora (o loopback do Electron reenviaria as lives que você assiste).
+async function captureScreenDesktop(settings: CaptureSettings, wantsAudio: boolean) {
+  await desktop!.setCaptureAudio(wantsAudio);
+  const stream = await navigator.mediaDevices.getDisplayMedia({ video: videoConstraints(settings), audio: false });
+  const video = stream.getVideoTracks()[0];
+  if (video) video.contentHint = 'motion';
+  try {
+    const audio = await desktopAudioTrack();
+    if (audio) stream.addTrack(audio);
+  } catch (e) {
+    stream.getTracks().forEach((t) => t.stop());
+    throw e;
+  }
+  return stream;
+}
+
 export async function captureCamera(settings: CaptureSettings): Promise<MediaStream> {
   return navigator.mediaDevices.getUserMedia({ video: videoConstraints(settings), audio: false });
 }
 
 export function supportsOwnAudioRestriction() {
+  if (desktop) return true;
   const supported = navigator.mediaDevices?.getSupportedConstraints?.() as
     | Record<string, boolean>
     | undefined;

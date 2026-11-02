@@ -1,15 +1,153 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GoLive · Compartilhar</title><style>
-:root{font-family:Inter,Segoe UI,system-ui,sans-serif;color:#f2f3ff;background:#0f1426}*{box-sizing:border-box}body{margin:0;padding:22px}header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}h1{font-size:21px;margin:0}p{color:#aab6cd;font-size:13px;margin:5px 0 0}.tabs{display:flex;gap:8px;margin-bottom:17px}.tabs button{border:1px solid #34405b;background:#182139;color:#dce3f5;padding:9px 14px;border-radius:9px;cursor:pointer}.tabs button.active{background:#695fe7;border-color:#908bfa}.grid{height:278px;overflow:auto;display:grid;grid-template-columns:repeat(3,1fr);align-content:start;gap:12px;padding:2px}.item{border:2px solid #303b55;border-radius:12px;overflow:hidden;background:#19243b;color:#f1f3ff;text-align:left;cursor:pointer;padding:0}.item.active{border-color:#a69bff;background:#2c2b57}.thumb{height:108px;display:grid;place-items:center;background:#090e1a}.thumb img{width:100%;height:100%;object-fit:contain}.name{padding:9px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}footer{border-top:1px solid #2a3650;margin-top:17px;padding-top:16px;display:flex;align-items:center;justify-content:space-between;gap:14px}label{display:flex;align-items:center;gap:8px;font-size:12px;color:#d7dfef}label small{display:block;color:#94a1ba}.buttons{display:flex;gap:9px}button{font:inherit}.buttons button{padding:11px 16px;border-radius:9px;border:1px solid #3b4964;background:#1c2840;color:#fff;cursor:pointer}.buttons button.primary{background:#695fe7;border-color:#695fe7;font-weight:700}.buttons button:disabled{opacity:.45;cursor:not-allowed}.empty{grid-column:1/-1;color:#aab6cd;text-align:center;padding:60px 0}
-</style></head><body>
-<header><div><h1>Compartilhar sua tela</h1><p>Escolha o monitor ou aplicativo que deseja transmitir</p></div><span style="font-size:24px">◉</span></header>
-<div class="tabs"><button data-filter="screen" class="active">Monitores</button><button data-filter="window">Aplicativos</button></div><div id="grid" class="grid"></div>
-<footer><label><input id="audio" type="checkbox"> Compartilhar áudio do sistema <small>(pode causar eco; ainda não isolamos o áudio por jogo)</small></label><div class="buttons"><button id="cancel">Cancelar</button><button id="start" class="primary" disabled>Iniciar transmissão</button></div></footer>
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>Nimbo · Escolher o que transmitir</title>
+<style>
+  :root { color-scheme: dark; font-family: Inter, 'Segoe UI', system-ui, sans-serif; color: #eef1ff; background: #0b1020; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 22px; height: 100vh; display: flex; flex-direction: column; }
+  h1 { font-size: 20px; margin: 0; }
+  p { color: #9aa6c4; font-size: 13px; margin: 5px 0 0; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .tabs { display: flex; gap: 8px; margin: 18px 0 14px; }
+  .tabs button { border: 1px solid #2a3554; background: #141b31; padding: 8px 14px; border-radius: 9px; }
+  .tabs button.active { background: #6c5ce7; border-color: #8f83f5; }
+  .grid { flex: 1; overflow: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); align-content: start; gap: 12px; padding: 2px; }
+  .item { border: 2px solid #232d4a; border-radius: 12px; overflow: hidden; background: #141b31; text-align: left; padding: 0; }
+  .item:hover { border-color: #3a4670; }
+  .item.active { border-color: #a99bff; background: #221f4a; }
+  .thumb { aspect-ratio: 16 / 10; display: grid; place-items: center; background: #070b16; color: #6f7a99; font-size: 12px; }
+  .thumb img { width: 100%; height: 100%; object-fit: contain; }
+  .name { display: flex; align-items: center; gap: 7px; padding: 9px 10px; font-size: 12px; }
+  .name img { width: 16px; height: 16px; flex: none; }
+  .name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .empty { grid-column: 1 / -1; color: #9aa6c4; text-align: center; padding: 60px 0; }
+  footer { border-top: 1px solid #1f2843; margin-top: 16px; padding-top: 16px; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+  label { display: flex; align-items: flex-start; gap: 9px; font-size: 13px; }
+  label input { margin-top: 3px; accent-color: #6c5ce7; }
+  label small { display: block; color: #8592b3; font-size: 12px; margin-top: 2px; }
+  .buttons { display: flex; gap: 9px; flex: none; }
+  .buttons button { padding: 10px 16px; border-radius: 9px; border: 1px solid #2f3a5c; background: #141b31; }
+  .buttons button.primary { background: #6c5ce7; border-color: #6c5ce7; font-weight: 700; }
+  .buttons button:disabled { opacity: 0.45; cursor: not-allowed; }
+</style>
+</head>
+<body>
+<h1>Escolha o que transmitir</h1>
+<p>Uma tela inteira ou a janela de um aplicativo (jogos funcionam melhor em janela sem bordas).</p>
+<div class="tabs">
+  <button data-filter="screen" class="active">Telas</button>
+  <button data-filter="window">Aplicativos</button>
+</div>
+<div id="grid" class="grid"></div>
+<footer>
+  <label><input id="audio" type="checkbox"><span id="audio-text"></span></label>
+  <div class="buttons">
+    <button id="cancel">Cancelar</button>
+    <button id="start" class="primary" disabled>Transmitir</button>
+  </div>
+</footer>
 <script>
-let sources=[],filter='screen',selected=null;const grid=document.getElementById('grid');const start=document.getElementById('start');
-function render(){grid.replaceChildren();const choices=sources.filter(s=>s.type===filter);if(!choices.length){const p=document.createElement('p');p.className='empty';p.textContent='Nenhuma fonte encontrada';grid.append(p)}
-for(const src of choices){const button=document.createElement('button');button.className='item'+(selected===src.id?' active':'');const thumb=document.createElement('div');thumb.className='thumb';if(src.thumbnail){const image=document.createElement('img');image.src=src.thumbnail;image.alt='Prévia';thumb.append(image)}else{thumb.textContent='Sem prévia'}const label=document.createElement('div');label.className='name';label.textContent=src.name;button.title=src.name;button.append(thumb,label);button.onclick=()=>{selected=src.id;start.disabled=false;render()};grid.append(button)}}
-document.querySelectorAll('[data-filter]').forEach(btn=>btn.onclick=()=>{filter=btn.dataset.filter;document.querySelectorAll('[data-filter]').forEach(b=>b.classList.toggle('active',b===btn));selected=null;start.disabled=true;render()});
-document.getElementById('cancel').onclick=()=>window.capturePicker.cancel();
-start.onclick=async()=>{if(!selected)return;start.disabled=true;await window.capturePicker.choose(selected,document.getElementById('audio').checked)};
-window.capturePicker.list().then(items=>{sources=items;render()}).catch(()=>{grid.textContent='Falha ao carregar as fontes'});
-</script></body></html>
+  let sources = [];
+  let filter = 'screen';
+  let selected = null;
+  const grid = document.getElementById('grid');
+  const start = document.getElementById('start');
+  const audio = document.getElementById('audio');
+  const audioText = document.getElementById('audio-text');
+
+  function describeAudio() {
+    audioText.replaceChildren();
+    const title = document.createElement('span');
+    const hint = document.createElement('small');
+    if (filter === 'screen') {
+      title.textContent = 'Transmitir o som do computador';
+      hint.textContent = 'O som das lives que você assiste no Nimbo fica de fora, sem eco.';
+    } else {
+      title.textContent = 'Transmitir só o som deste aplicativo';
+      hint.textContent = 'Discord, música e o Nimbo não entram na live.';
+    }
+    audioText.append(title, hint);
+  }
+
+  function render() {
+    grid.replaceChildren();
+    const choices = sources.filter((s) => s.type === filter);
+    if (!choices.length) {
+      const empty = document.createElement('p');
+      empty.className = 'empty';
+      empty.textContent = filter === 'screen' ? 'Nenhuma tela encontrada' : 'Nenhum aplicativo aberto';
+      grid.append(empty);
+    }
+    for (const src of choices) {
+      const button = document.createElement('button');
+      button.className = 'item' + (selected === src.id ? ' active' : '');
+      button.title = src.name;
+      const thumb = document.createElement('div');
+      thumb.className = 'thumb';
+      if (src.thumbnail) {
+        const image = document.createElement('img');
+        image.src = src.thumbnail;
+        image.alt = '';
+        thumb.append(image);
+      } else thumb.textContent = 'Sem prévia';
+      const name = document.createElement('div');
+      name.className = 'name';
+      if (src.icon) {
+        const icon = document.createElement('img');
+        icon.src = src.icon;
+        icon.alt = '';
+        name.append(icon);
+      }
+      const text = document.createElement('span');
+      text.textContent = src.name;
+      name.append(text);
+      button.append(thumb, name);
+      button.onclick = () => {
+        selected = src.id;
+        start.disabled = false;
+        render();
+      };
+      button.ondblclick = () => choose();
+      grid.append(button);
+    }
+  }
+
+  async function choose() {
+    if (!selected) return;
+    start.disabled = true;
+    await window.capturePicker.choose(selected, audio.checked);
+  }
+
+  document.querySelectorAll('[data-filter]').forEach((btn) => {
+    btn.onclick = () => {
+      filter = btn.dataset.filter;
+      document.querySelectorAll('[data-filter]').forEach((b) => b.classList.toggle('active', b === btn));
+      selected = null;
+      start.disabled = true;
+      describeAudio();
+      render();
+    };
+  });
+  document.getElementById('cancel').onclick = () => window.capturePicker.cancel();
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') window.capturePicker.cancel();
+  });
+  start.onclick = choose;
+  describeAudio();
+  window.capturePicker
+    .list()
+    .then((result) => {
+      sources = result.sources;
+      audio.checked = result.audio;
+      render();
+    })
+    .catch(() => {
+      grid.textContent = 'Não foi possível listar as telas e aplicativos.';
+    });
+</script>
+</body>
+</html>

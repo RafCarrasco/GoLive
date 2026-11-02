@@ -293,6 +293,13 @@ h2 {
 .nickname-form .button {
   height: 42px;
 }
+.link-button {
+  padding: 0;
+  background: none;
+  color: var(--primary);
+  font: inherit;
+  text-decoration: underline;
+}
 .field-error {
   margin: 0;
   color: #ff8a97;

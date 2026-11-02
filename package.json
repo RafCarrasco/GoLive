@@ -1,5 +1,6 @@
 {
-  "name": "golive",
+  "name": "nimbo",
+  "productName": "Nimbo",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -7,13 +8,15 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "desktop:dev": "electron desktop/main.cjs",
-    "desktop:pack": "npm run build && electron-builder --win portable",
+    "desktop:dev": "npm run desktop:audio && electron desktop/main.cjs",
+    "desktop:pack": "npm run desktop:audio && electron-builder --win portable",
     "rules:build": "node scripts/build-rules.mjs",
     "test:rules": "firebase emulators:exec --only database --project demo-nimbo \"node --test tests/rules.test.mjs\"",
     "emulators": "firebase emulators:start --only auth,database --project demo-nimbo",
     "dev:local": "vite --mode emulator",
-    "emulator:approve": "node scripts/emulator-approve.mjs"
+    "emulator:approve": "node scripts/emulator-approve.mjs",
+    "desktop:audio": "node scripts/build-desktop-audio.mjs",
+    "desktop:icon": "electron scripts/desktop-icon.cjs"
   },
   "dependencies": {
     "firebase": "^11.10.0",
@@ -33,15 +36,24 @@
   },
   "main": "desktop/main.cjs",
   "build": {
-    "appId": "com.golive.friends",
-    "productName": "GoLive",
+    "appId": "app.nimbo.desktop",
+    "productName": "Nimbo",
     "directories": {
       "output": "release"
     },
     "files": [
-      "dist/**/*",
       "desktop/**/*",
-      "package.json"
+      "!desktop/native/**",
+      "!desktop/bin/**",
+      "!desktop/README.md",
+      "package.json",
+      "!node_modules/**"
+    ],
+    "extraResources": [
+      {
+        "from": "desktop/bin/nimbo-audio.exe",
+        "to": "nimbo-audio.exe"
+      }
     ],
     "win": {
       "target": [
@@ -50,7 +62,9 @@
       "icon": "desktop/icon.ico"
     },
     "portable": {
-      "artifactName": "GoLive-Portable.exe"
+      "artifactName": "Nimbo-Portable.exe"
     }
-  }
+  },
+  "description": "Nimbo: comunidade privada para lives de tela e webcam entre amigos",
+  "author": "Rafael Carrasco"
 }

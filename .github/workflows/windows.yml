@@ -1,57 +1,22 @@
 name: Windows portable
+# Só manual: gera o executável como artifact. Releases não são publicadas automaticamente.
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'desktop/**'
-      - 'src/**'
-      - 'package.json'
-      - '.github/workflows/windows.yml'
 jobs:
   build:
     runs-on: windows-latest
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - run: npm install
-      - name: Generate Windows application icon
-        shell: pwsh
-        run: |
-          python -m pip install pillow
-          @'
-          from PIL import Image, ImageDraw
-          im=Image.new('RGBA',(256,256),(11,16,32,255))
-          d=ImageDraw.Draw(im)
-          d.rounded_rectangle((18,18,238,238),radius=55,fill=(102,91,244,255))
-          d.rounded_rectangle((62,75,194,181),radius=22,fill=(234,239,255,255))
-          d.polygon([(119,93),(119,164),(169,129)],fill=(102,91,244,255))
-          im.save('desktop/icon.ico',sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)])
-          '@ | python -
       - run: npm run desktop:pack
       - uses: actions/upload-artifact@v4
         with:
-          name: GoLive-Windows-Portable
-          path: release/GoLive-Portable.exe
+          name: Nimbo-Windows-Portable
+          path: release/Nimbo-Portable.exe
           if-no-files-found: error
 
-      - name: Publish beta release
-        if: github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v0.1.0-beta.${{ github.run_number }}
-          name: GoLive Windows Beta #${{ github.run_number }}
-          prerelease: true
-          make_latest: false
-          generate_release_notes: false
-          body: |
-            Versão experimental para Windows. O aplicativo abre o GoLive do navegador em uma janela dedicada.
-            Captura de tela e áudio ainda têm limitações, inclusive para jogos em tela cheia exclusiva.
-            Arquivo: GoLive-Portable.exe (sem instalador).
-            O executável ainda não é assinado digitalmente e pode apresentar um aviso do Windows SmartScreen.
-          files: release/GoLive-Portable.exe
-          fail_on_unmatched_files: true

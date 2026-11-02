@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { desktop } from '../desktop';
 import { Check, LoaderCircle } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import {
@@ -105,7 +106,9 @@ export function StreamSettingsModal({
               ? 'O som das lives que você assiste no Nimbo não é reenviado. Vozes de outros apps (ex.: Discord) entram na live.'
               : 'Seu navegador pode reenviar o som das lives que você assiste. Use fones ou silencie as outras lives.'
             : settings.audio === 'window'
-              ? 'Envia apenas o som da janela escolhida, quando o navegador permite.'
+              ? desktop
+                ? 'Escolha um aplicativo no seletor: só o som dele vai para a live.'
+                : 'Envia apenas o som da janela escolhida, quando o navegador permite.'
               : 'Somente vídeo.'}
         </small>
       </div>

@@ -5,7 +5,7 @@ import { connectDatabaseEmulator, getDatabase } from 'firebase/database';
 // `npm run dev:local` usa os emuladores locais (projeto demo-nimbo) em vez do Firebase real.
 export const useEmulators = import.meta.env.MODE === 'emulator';
 
-const firebaseConfig = useEmulators
+export const firebaseConfig = useEmulators
   ? {
       apiKey: 'demo-key',
       authDomain: 'demo-nimbo.firebaseapp.com',
