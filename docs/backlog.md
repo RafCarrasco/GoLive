@@ -51,3 +51,20 @@ nova. Ideia: ao clicar em atualizar, gravar a versão de destino; depois do rein
 novidades dessa versão e só então marcar como vista. Cuidar para site e app chegarem na mesma
 versão (o site pode estar à frente do app) e para quem atualiza sem clicar (abriu o app depois).
 
+## Comunidade
+
+### Foto de perfil visível para todos (pedido em 02/11/2026, para pensar depois)
+Restrições: sem Firebase Storage para fotos (combinado no handoff) e custo zero (plano Spark).
+
+- **Opção A, foto do Google:** o login já traz `user.photoURL`. Guardar essa URL no perfil
+  (`community/profiles/$uid/photo`) e mostrar no lugar da inicial (barra lateral, participantes,
+  painel, cartões de live). Sem upload e sem custo. Regra: só `https://` em `*.googleusercontent.com`,
+  até ~300 caracteres.
+- **Opção B, foto própria:** a pessoa escolhe uma imagem, o navegador recorta em quadrado, reduz
+  para 96x96 e converte para WebP (~5 a 8 KB), e o texto em base64 vai para um nó separado
+  (`community/avatars/$uid`), lido uma vez e guardado em cache, para não pesar no perfil. Regra:
+  dono escreve a própria, começa com `data:image/webp;base64,` e no máximo ~16 KB. Com 20 pessoas
+  são ~160 KB por carregamento, bem dentro do Spark (10 GB/mês de download).
+- **Sugestão:** A como padrão e B como "Trocar foto" no perfil; sem foto, continua a inicial colorida.
+  Moderação: o proprietário pode remover a foto de alguém (regra de escrita para owner).
+
