@@ -1,7 +1,7 @@
 {
   "name": "nimbo",
   "productName": "Nimbo",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,7 +9,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "desktop:dev": "npm run desktop:audio && electron desktop/main.cjs",
-    "desktop:pack": "npm run desktop:audio && electron-builder --win portable",
+    "desktop:pack": "npm run desktop:audio && electron-builder --win nsis --publish never",
     "rules:build": "node scripts/build-rules.mjs",
     "test:rules": "firebase emulators:exec --only database --project demo-nimbo \"node --test tests/rules.test.mjs\"",
     "emulators": "firebase emulators:start --only auth,database --project demo-nimbo",
@@ -19,10 +19,7 @@
     "desktop:icon": "electron scripts/desktop-icon.cjs"
   },
   "dependencies": {
-    "firebase": "^11.10.0",
-    "lucide-react": "^0.468.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "electron-updater": "^6.8.11"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^4.0.1",
@@ -31,6 +28,10 @@
     "@vitejs/plugin-react": "^4.4.0",
     "electron": "^39.2.0",
     "electron-builder": "^26.0.12",
+    "firebase": "^11.10.0",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "typescript": "~5.8.3",
     "vite": "^6.2.0"
   },
@@ -46,8 +47,7 @@
       "!desktop/native/**",
       "!desktop/bin/**",
       "!desktop/README.md",
-      "package.json",
-      "!node_modules/**"
+      "package.json"
     ],
     "extraResources": [
       {
@@ -57,13 +57,28 @@
     ],
     "win": {
       "target": [
-        "portable"
+        "nsis"
       ],
       "icon": "desktop/icon.ico"
     },
-    "portable": {
-      "artifactName": "Nimbo-Portable.exe"
-    }
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Nimbo",
+      "uninstallDisplayName": "Nimbo",
+      "artifactName": "Nimbo-Setup.exe",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "RafCarrasco",
+        "repo": "Nimbo"
+      }
+    ]
   },
   "description": "Nimbo: comunidade privada para lives de tela e webcam entre amigos",
   "author": "Rafael Carrasco"

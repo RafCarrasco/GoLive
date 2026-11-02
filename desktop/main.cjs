@@ -1,7 +1,7 @@
 // App Nimbo para Windows: uma janela que abre o Nimbo publicado (as atualizações do site chegam
 // sem novo executável) e acrescenta o que o navegador não faz bem: seletor de tela/janela, áudio
 // sem eco (capturador nativo) e login do Google pelo navegador do sistema.
-const { app, BrowserWindow, desktopCapturer, ipcMain, session, shell, Menu } = require('electron');
+const { app, BrowserWindow, desktopCapturer, dialog, ipcMain, session, shell, Menu } = require('electron');
 const { spawn } = require('child_process');
 const crypto = require('crypto');
 const http = require('http');
@@ -254,6 +254,35 @@ app.on('before-quit', () => {
   audioSessions.clear();
 });
 
+// ---------- Atualização automática ----------
+// O app instalado confere o último Release do GitHub ao abrir e a cada 6 horas; a versão nova é
+// baixada em segundo plano e entra ao reiniciar (ou na próxima vez que o app abrir).
+function setupAutoUpdate() {
+  if (!app.isPackaged) return;
+  const { autoUpdater } = require('electron-updater');
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.on('error', (e) => console.warn('[nimbo] atualização:', e?.message || e));
+  let asked = false;
+  autoUpdater.on('update-downloaded', async (info) => {
+    if (asked || !mainWindow || mainWindow.isDestroyed()) return;
+    asked = true;
+    const { response } = await dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Nimbo',
+      message: `A versão ${info.version} do Nimbo está pronta.`,
+      detail: 'Reinicie para usar agora, ou ela entra sozinha na próxima vez que você abrir o app.',
+      buttons: ['Reiniciar agora', 'Depois'],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (response === 0) autoUpdater.quitAndInstall();
+  });
+  const check = () => autoUpdater.checkForUpdates().catch(() => {});
+  check();
+  setInterval(check, 6 * 60 * 60 * 1000).unref();
+}
+
 // ---------- Janela principal ----------
 const ALLOWED_PERMISSIONS = new Set(['media', 'display-capture', 'fullscreen', 'clipboard-sanitized-write']);
 
@@ -317,6 +346,7 @@ app.whenReady().then(async () => {
     if (input.type === 'keyDown' && (input.key === 'F5' || (input.control && input.key.toLowerCase() === 'r')))
       mainWindow.webContents.reload();
   });
+  setupAutoUpdate();
   await mainWindow.loadURL(APP_URL);
 });
 

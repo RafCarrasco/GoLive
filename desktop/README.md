@@ -15,7 +15,15 @@ acrescenta o que o navegador não faz bem:
 npm run desktop:pack
 ```
 
-Saída: `release/Nimbo-Portable.exe` (sem instalador, não assinado: o SmartScreen avisa na primeira vez).
+Saída em `release/`: `Nimbo-Setup.exe` (instalador de um clique por usuário, sem administrador, com atalhos
+e desinstalação em Aplicativos instalados), `Nimbo-Setup.exe.blockmap` e `latest.yml`. Não é assinado: o
+SmartScreen avisa na primeira vez.
+
+## Atualização automática
+
+O app instalado consulta o último Release de `RafCarrasco/Nimbo` ao abrir e a cada 6 horas
+(`electron-updater`). Para publicar uma versão: suba `version` no `package.json`, rode `npm run desktop:pack`
+e anexe ao Release os três arquivos acima. Mudanças só no site não precisam de versão nova do app.
 O capturador de áudio é compilado com o `csc.exe` que já vem no Windows. `npm run desktop:icon`
 regenera `icon.ico` a partir de `public/nimbo-mascot.svg`.
 

@@ -16,7 +16,10 @@ jobs:
       - run: npm run desktop:pack
       - uses: actions/upload-artifact@v4
         with:
-          name: Nimbo-Windows-Portable
-          path: release/Nimbo-Portable.exe
+          name: Nimbo-Windows-Setup
+          path: |
+            release/Nimbo-Setup.exe
+            release/Nimbo-Setup.exe.blockmap
+            release/latest.yml
           if-no-files-found: error
 
