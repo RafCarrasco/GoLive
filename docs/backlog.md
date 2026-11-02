@@ -39,3 +39,15 @@ reinicia e instala a versão baixada (`desktop.installUpdate`); no site, recarre
   depois de a pessoa fechar o cartão com "Depois".
 - Entra no próximo Release do app (precisa de `nimboDesktop.watchUpdate`, presente a partir do 0.3.2).
 
+### Rodapé só com "Nimbo 0.3.4" (pedido em 02/11/2026, para a próxima análise)
+Tirar o "· app 0.3.4" do rodapé da barra lateral (`src/components/UserPanel.tsx`, `.version-line`):
+fica só "Nimbo <versão>". A versão do app continua no título da janela.
+
+### Novidades sincronizadas com a atualização (pedido em 02/11/2026, para a próxima análise)
+Hoje a janela de novidades aparece quando o site carregado tem versão maior que a última vista
+(`nimbo.seenVersion`), independente de a pessoa ter clicado em atualizar. O fluxo desejado é:
+clicou em atualizar → o app (ou o site) reinicia → abre já mostrando as novidades da versão
+nova. Ideia: ao clicar em atualizar, gravar a versão de destino; depois do reinício, mostrar as
+novidades dessa versão e só então marcar como vista. Cuidar para site e app chegarem na mesma
+versão (o site pode estar à frente do app) e para quem atualiza sem clicar (abriu o app depois).
+
