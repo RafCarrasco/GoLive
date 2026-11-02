@@ -150,6 +150,10 @@ export class LiveRoom {
   private joined = false;
   private online = true;
   private closed = false;
+  // Desde quando cada live anunciada está sem chegar, e quando foi a última reconexão completa.
+  private missingSince: Record<string, number> = {};
+  private lastResync = 0;
+  private autoResyncs = 0;
 
   constructor(
     private db: Database,
@@ -229,6 +233,8 @@ export class LiveRoom {
 
   private listen() {
     let wasOffline = false;
+    const watchdog = setInterval(() => this.checkMissing(), 5000);
+    this.unsubs.push(() => clearInterval(watchdog));
     this.unsubs.push(
       onValue(ref(this.db, '.info/connected'), (snap) => {
         const connected = snap.val() === true;
@@ -444,13 +450,51 @@ export class LiveRoom {
     delete this.remote[id];
   }
 
-  // Pede uma nova rota de rede para a conexão com este participante (botão "Tentar de novo").
+  // Botão "Tentar de novo": se o vídeo já chegou e só a rota caiu, pede uma rota nova; se nunca
+  // chegou, reconecta do zero.
   retry(id: string) {
     const peer = this.peers.get(id);
-    if (!peer) return;
     this.failed.delete(id);
-    peer.pc.restartIce();
+    if (peer && Object.keys(this.remote[id] || {}).length) {
+      peer.pc.restartIce();
+      this.emit();
+      return;
+    }
+    void this.resync();
+  }
+
+  // Reconexão completa, igual a recarregar a página: uma sessão nova faz cada pessoa que está
+  // transmitindo descartar a conexão antiga com a gente e mandar uma oferta nova. Resolve o caso
+  // em que uma das pontas caiu e voltou e a conexão ficou perdida sem ninguém refazer.
+  private async resync() {
+    if (!this.joined || this.closed || !this.online) return;
+    this.lastResync = Date.now();
+    this.missingSince = {};
+    console.info('[nimbo] reconectando o canal');
+    await this.registerPresence(true).catch((e) => this.onIssue(String(e)));
     this.emit();
+  }
+
+  // Live anunciada que não chega em 20 s dispara uma reconexão (no máximo uma a cada 45 s e três
+  // seguidas). Conexões que falharam de vez (rede bloqueando P2P) ficam com o botão manual.
+  private checkMissing() {
+    if (!this.joined || !this.online) return;
+    const now = Date.now();
+    const waiting = Object.keys(this.broadcasts).filter(
+      (id) =>
+        id !== this.uid &&
+        this.members.includes(id) &&
+        !this.failed.has(id) &&
+        !Object.keys(this.remote[id] || {}).length,
+    );
+    if (!waiting.length) this.autoResyncs = 0;
+    for (const id of Object.keys(this.missingSince)) if (!waiting.includes(id)) delete this.missingSince[id];
+    for (const id of waiting) this.missingSince[id] ??= now;
+    const stuck = waiting.some((id) => now - this.missingSince[id] > 20000);
+    if (stuck && now - this.lastResync > 45000 && this.autoResyncs < 3) {
+      this.autoResyncs++;
+      void this.resync();
+    }
   }
 
   // Para suporte: no console do navegador, rode nimboDebug().
