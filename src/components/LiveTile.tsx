@@ -12,6 +12,7 @@ import {
   WifiOff,
   X,
 } from 'lucide-react';
+import { desktop } from '../desktop';
 
 export type TileState = 'playing' | 'connecting' | 'failed';
 
@@ -154,8 +155,10 @@ export function LiveTile({
           {noImage && !compact && (
             <small className="tile-hint">
               {own
-                ? 'Jogo em tela cheia não aparece na captura de janela. Use "Janela sem bordas" (ou "Tela cheia em janela") nas opções de vídeo do jogo, ou transmita a tela inteira.'
-                : 'O problema é na captura de quem transmite. Se for um jogo em tela cheia, peça para usar "Janela sem bordas" ou transmitir a tela inteira.'}
+                ? desktop
+                  ? 'Jogo em tela cheia não aparece na captura de janela. Troque a fonte (botão ao lado de Encerrar) e escolha a tela inteira; no app atualizado, escolher o jogo já faz isso.'
+                  : 'Jogo em tela cheia não aparece na captura de janela. Troque a fonte e escolha a tela inteira, ou use o app do Nimbo para Windows.'
+                : 'O problema é na captura de quem transmite. Se for um jogo em tela cheia, peça para transmitir a tela inteira.'}
             </small>
           )}
           {!own && !compact && onRetry && (state === 'failed' || slow) && (

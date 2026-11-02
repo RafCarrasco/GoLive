@@ -1,7 +1,7 @@
 // App Nimbo para Windows: uma janela que abre o Nimbo publicado (as atualizações do site chegam
 // sem novo executável) e acrescenta o que o navegador não faz bem: seletor de tela/janela, áudio
 // sem eco (capturador nativo) e login do Google pelo navegador do sistema.
-const { app, BrowserWindow, desktopCapturer, dialog, ipcMain, session, shell, Menu } = require('electron');
+const { app, BrowserWindow, desktopCapturer, dialog, ipcMain, screen, session, shell, Menu } = require('electron');
 const { execFile, spawn } = require('child_process');
 const crypto = require('crypto');
 const http = require('http');
@@ -157,6 +157,43 @@ async function minimizedSources(known) {
   );
 }
 
+function windowInfo(hwnd) {
+  return new Promise((resolve) =>
+    execFile(AUDIO_HELPER, ['info', hwnd], { timeout: 2000, windowsHide: true }, (error, stdout) => {
+      try {
+        resolve(error ? null : JSON.parse(stdout));
+      } catch {
+        resolve(null);
+      }
+    }),
+  );
+}
+
+// Monitor (fonte "screen:") onde está o retângulo dado em pixels físicos.
+async function screenSourceFor(monitor) {
+  const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } });
+  if (sources.length === 1) return sources[0];
+  const center = screen.screenToDipPoint({
+    x: Math.round((monitor.left + monitor.right) / 2),
+    y: Math.round((monitor.top + monitor.bottom) / 2),
+  });
+  const display = screen.getDisplayNearestPoint(center);
+  return sources.find((s) => s.display_id === String(display.id)) || null;
+}
+
+// Janela de jogo em tela cheia não gera imagem na captura de janela (o jogo desenha direto na tela).
+// Nesse caso o vídeo vem do monitor do jogo, que funciona sem perder FPS, e o som continua só do
+// jogo. Um jogo que estava minimizado leva um instante para voltar à tela cheia.
+async function gameCapture(hwnd) {
+  let info = await windowInfo(hwnd);
+  for (let i = 0; i < 10 && info?.minimized; i++) {
+    await new Promise((r) => setTimeout(r, 300));
+    info = await windowInfo(hwnd);
+  }
+  if (!info?.fullscreen) return null;
+  return screenSourceFor(info.monitor);
+}
+
 function restoreWindow(hwnd) {
   return new Promise((resolve) =>
     execFile(AUDIO_HELPER, ['restore', hwnd], { timeout: 2000, windowsHide: true }, () => resolve()),
@@ -230,6 +267,14 @@ function chooseCaptureSource() {
         source = { id, name: minimized.name };
       }
       if (!source) throw new Error('Fonte não encontrada');
+      if (id.startsWith('window:')) {
+        const hwnd = id.split(':')[1];
+        const monitor = await gameCapture(hwnd);
+        if (monitor) {
+          settle({ source: monitor, label: source.name, audioArgs: ['window', hwnd], audio: Boolean(audio) });
+          return true;
+        }
+      }
       settle({ source, audio: Boolean(audio) });
       return true;
     });
@@ -371,7 +416,7 @@ app.whenReady().then(async () => {
       const selected = await chooseCaptureSource();
       if (!selected) return callback({});
       pendingAudio = selected.audio
-        ? { args: audioArgs(selected.source), label: selected.source.name }
+        ? { args: selected.audioArgs || audioArgs(selected.source), label: selected.label || selected.source.name }
         : null;
       callback({ video: selected.source });
     } catch (e) {

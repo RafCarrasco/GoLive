@@ -7,6 +7,7 @@
 //   nimbo-audio.exe list            janelas minimizadas, uma por linha em JSON (jogos em tela cheia
 //                                   se minimizam ao perder o foco e somem da lista do Chromium)
 //   nimbo-audio.exe restore <hwnd>  traz a janela de volta (o jogo volta à tela ao ser escolhido)
+//   nimbo-audio.exe info <hwnd>     retângulo da janela e do monitor dela, e se cobre o monitor
 //
 // Termina quando a entrada padrão fecha (o Nimbo saiu) ou em caso de erro (código != 0).
 // Compilar: csc /platform:x64 /optimize /out:nimbo-audio.exe NimboAudio.cs
@@ -163,6 +164,48 @@ namespace Nimbo
             return ok ? path.ToString() : "";
         }
 
+        [StructLayout(LayoutKind.Sequential)]
+        struct Rect
+        {
+            public int Left, Top, Right, Bottom;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct MonitorInfo
+        {
+            public int cbSize;
+            public Rect Monitor;
+            public Rect Work;
+            public uint Flags;
+        }
+
+        [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hwnd, out Rect rect);
+        [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
+        [DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
+        [DllImport("user32.dll")] static extern IntPtr SetProcessDpiAwarenessContext(IntPtr value);
+
+        static string RectJson(Rect r)
+        {
+            return "{\"left\":" + r.Left + ",\"top\":" + r.Top + ",\"right\":" + r.Right + ",\"bottom\":" + r.Bottom + "}";
+        }
+
+        // Janela e monitor em pixels físicos, e se a janela cobre o monitor inteiro (jogo em tela cheia).
+        static int WindowInfo(IntPtr hwnd)
+        {
+            try { SetProcessDpiAwarenessContext(new IntPtr(-4)); } catch { }
+            Rect window;
+            if (!GetWindowRect(hwnd, out window)) return Fail("janela não encontrada");
+            var info = new MonitorInfo { cbSize = Marshal.SizeOf(typeof(MonitorInfo)) };
+            if (!GetMonitorInfo(MonitorFromWindow(hwnd, 2), ref info)) return Fail("monitor não encontrado");
+            bool fullscreen = !IsIconic(hwnd) &&
+                window.Left <= info.Monitor.Left && window.Top <= info.Monitor.Top &&
+                window.Right >= info.Monitor.Right && window.Bottom >= info.Monitor.Bottom;
+            Console.Out.Write("{\"fullscreen\":" + (fullscreen ? "true" : "false") +
+                ",\"minimized\":" + (IsIconic(hwnd) ? "true" : "false") +
+                ",\"window\":" + RectJson(window) + ",\"monitor\":" + RectJson(info.Monitor) + "}\n");
+            return 0;
+        }
+
         static int ListMinimized()
         {
             var output = new StringBuilder();
@@ -196,6 +239,12 @@ namespace Nimbo
         static int Main(string[] args)
         {
             if (args.Length == 1 && args[0] == "list") return ListMinimized();
+            if (args.Length == 2 && args[0] == "info")
+            {
+                long target;
+                if (!long.TryParse(args[1], out target)) return Fail("janela inválida");
+                return WindowInfo(new IntPtr(target));
+            }
             if (args.Length == 2 && args[0] == "restore")
             {
                 long target;
