@@ -8,41 +8,58 @@
 <style>
   :root { color-scheme: dark; font-family: Inter, 'Segoe UI', system-ui, sans-serif; color: #eef1ff; background: #0b1020; }
   * { box-sizing: border-box; }
-  body { margin: 0; padding: 22px; height: 100vh; display: flex; flex-direction: column; }
-  h1 { font-size: 20px; margin: 0; }
-  p { color: #9aa6c4; font-size: 13px; margin: 5px 0 0; }
+  body { margin: 0; height: 100vh; display: flex; flex-direction: column; padding: 22px 24px 20px; }
+  h1 { font-size: 19px; margin: 0; }
   button { font: inherit; color: inherit; cursor: pointer; }
-  .tabs { display: flex; gap: 8px; margin: 18px 0 14px; }
-  .tabs button { border: 1px solid #2a3554; background: #141b31; padding: 8px 14px; border-radius: 9px; }
-  .tabs button.active { background: #6c5ce7; border-color: #8f83f5; }
-  .grid { flex: 1; overflow: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); align-content: start; gap: 12px; padding: 2px; }
-  .item { border: 2px solid #232d4a; border-radius: 12px; overflow: hidden; background: #141b31; text-align: left; padding: 0; }
-  .item:hover { border-color: #3a4670; }
-  .item.active { border-color: #a99bff; background: #221f4a; }
-  .thumb { aspect-ratio: 16 / 10; display: grid; place-items: center; background: #070b16; color: #6f7a99; font-size: 12px; }
+  header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+  header p { color: #8f9bbb; font-size: 13px; margin: 4px 0 0; }
+  .tabs { display: flex; padding: 3px; border-radius: 10px; background: #141b31; border: 1px solid #222c49; flex: none; }
+  .tabs button { border: 0; background: none; padding: 7px 16px; border-radius: 8px; color: #a9b3cf; font-size: 13px; font-weight: 600; }
+  .tabs button.active { background: #6c5ce7; color: #fff; }
+  .grid { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    grid-auto-rows: max-content; align-content: start; gap: 14px; padding: 2px 4px 2px 2px; }
+  .grid::-webkit-scrollbar { width: 8px; }
+  .grid::-webkit-scrollbar-thumb { background: #2a3456; border-radius: 4px; }
+  .item { position: relative; display: flex; flex-direction: column; padding: 6px; border: 2px solid transparent; border-radius: 12px;
+    background: #121a2f; text-align: left; transition: border-color 0.12s, background 0.12s; }
+  .item:hover { background: #18213b; }
+  .item.active { border-color: #8f83f5; background: #1c1d45; }
+  .thumb { aspect-ratio: 16 / 9; border-radius: 7px; overflow: hidden; display: grid; place-items: center; background: #05080f;
+    color: #5d6788; font-size: 12px; }
   .thumb img { width: 100%; height: 100%; object-fit: contain; }
-  .name { display: flex; align-items: center; gap: 7px; padding: 9px 10px; font-size: 12px; }
+  .name { display: flex; align-items: center; gap: 8px; padding: 9px 4px 3px; font-size: 13px; min-width: 0; }
   .name img { width: 16px; height: 16px; flex: none; }
   .name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .empty { grid-column: 1 / -1; color: #9aa6c4; text-align: center; padding: 60px 0; }
-  footer { border-top: 1px solid #1f2843; margin-top: 16px; padding-top: 16px; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
-  label { display: flex; align-items: flex-start; gap: 9px; font-size: 13px; }
-  label input { margin-top: 3px; accent-color: #6c5ce7; }
-  label small { display: block; color: #8592b3; font-size: 12px; margin-top: 2px; }
+  .check { position: absolute; top: 12px; right: 12px; width: 24px; height: 24px; border-radius: 50%; background: #6c5ce7;
+    display: none; place-items: center; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); }
+  .item.active .check { display: grid; }
+  .empty { grid-column: 1 / -1; color: #8f9bbb; text-align: center; padding: 60px 0; font-size: 14px; }
+  .hint { color: #7f8aab; font-size: 12px; margin: 12px 0 0; }
+  .hint strong { color: #b9c1dc; font-weight: 600; }
+  footer { border-top: 1px solid #1c2440; margin-top: 14px; padding-top: 16px; display: flex; align-items: center;
+    justify-content: space-between; gap: 16px; }
+  label { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; cursor: pointer; }
+  label input { margin: 2px 0 0; width: 16px; height: 16px; accent-color: #6c5ce7; }
+  label small { display: block; color: #7f8aab; font-size: 12px; margin-top: 2px; }
   .buttons { display: flex; gap: 9px; flex: none; }
-  .buttons button { padding: 10px 16px; border-radius: 9px; border: 1px solid #2f3a5c; background: #141b31; }
-  .buttons button.primary { background: #6c5ce7; border-color: #6c5ce7; font-weight: 700; }
-  .buttons button:disabled { opacity: 0.45; cursor: not-allowed; }
+  .buttons button { padding: 10px 18px; border-radius: 9px; border: 1px solid #2a3456; background: #141b31; font-weight: 600; }
+  .buttons button.primary { background: #6c5ce7; border-color: #6c5ce7; color: #fff; }
+  .buttons button:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>
 </head>
 <body>
-<h1>Escolha o que transmitir</h1>
-<p>Uma tela inteira ou a janela de um aplicativo (jogos funcionam melhor em janela sem bordas).</p>
-<div class="tabs">
-  <button data-filter="screen" class="active">Telas</button>
-  <button data-filter="window">Aplicativos</button>
-</div>
+<header>
+  <div>
+    <h1>Escolha o que transmitir</h1>
+    <p>Uma tela inteira ou a janela de um aplicativo.</p>
+  </div>
+  <div class="tabs">
+    <button data-filter="screen" class="active">Telas</button>
+    <button data-filter="window">Aplicativos</button>
+  </div>
+</header>
 <div id="grid" class="grid"></div>
+<p id="hint" class="hint"></p>
 <footer>
   <label><input id="audio" type="checkbox"><span id="audio-text"></span></label>
   <div class="buttons">
@@ -58,62 +75,83 @@
   const start = document.getElementById('start');
   const audio = document.getElementById('audio');
   const audioText = document.getElementById('audio-text');
+  const hint = document.getElementById('hint');
+  const CHECK =
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 
-  function describeAudio() {
+  function describe() {
     audioText.replaceChildren();
     const title = document.createElement('span');
-    const hint = document.createElement('small');
+    const detail = document.createElement('small');
     if (filter === 'screen') {
       title.textContent = 'Transmitir o som do computador';
-      hint.textContent = 'O som das lives que você assiste no Nimbo fica de fora, sem eco.';
+      detail.textContent = 'O som das lives que você assiste no Nimbo fica de fora, sem eco.';
+      hint.textContent = '';
     } else {
       title.textContent = 'Transmitir só o som deste aplicativo';
-      hint.textContent = 'Discord, música e o Nimbo não entram na live.';
+      detail.textContent = 'Discord, música e o Nimbo não entram na live.';
+      hint.innerHTML =
+        'Não achou o jogo? Ele precisa estar aberto e fora da tela cheia: use <strong>Janela sem bordas</strong> (ou "Tela cheia em janela") nas opções de vídeo, ou transmita a <strong>tela inteira</strong>.';
     }
-    audioText.append(title, hint);
+    audioText.append(title, detail);
+  }
+
+  function card(src) {
+    const button = document.createElement('button');
+    button.className = 'item' + (selected === src.id ? ' active' : '');
+    button.title = src.name;
+    const thumb = document.createElement('div');
+    thumb.className = 'thumb';
+    if (src.thumbnail) {
+      const image = document.createElement('img');
+      image.src = src.thumbnail;
+      image.alt = '';
+      thumb.append(image);
+    } else thumb.textContent = src.minimized ? 'Minimizado: volta à tela ao transmitir' : 'Sem prévia';
+    const name = document.createElement('div');
+    name.className = 'name';
+    if (src.icon) {
+      const icon = document.createElement('img');
+      icon.src = src.icon;
+      icon.alt = '';
+      name.append(icon);
+    }
+    const text = document.createElement('span');
+    text.textContent = src.name;
+    name.append(text);
+    const check = document.createElement('span');
+    check.className = 'check';
+    check.innerHTML = CHECK;
+    button.append(thumb, name, check);
+    button.onclick = () => {
+      selected = src.id;
+      start.disabled = false;
+      render();
+    };
+    button.ondblclick = () => choose();
+    return button;
   }
 
   function render() {
-    grid.replaceChildren();
     const choices = sources.filter((s) => s.type === filter);
+    if (selected && !choices.some((s) => s.id === selected)) {
+      selected = null;
+      start.disabled = true;
+    }
+    const top = grid.scrollTop;
+    grid.replaceChildren();
     if (!choices.length) {
       const empty = document.createElement('p');
       empty.className = 'empty';
       empty.textContent = filter === 'screen' ? 'Nenhuma tela encontrada' : 'Nenhum aplicativo aberto';
       grid.append(empty);
     }
+    let screen = 0;
     for (const src of choices) {
-      const button = document.createElement('button');
-      button.className = 'item' + (selected === src.id ? ' active' : '');
-      button.title = src.name;
-      const thumb = document.createElement('div');
-      thumb.className = 'thumb';
-      if (src.thumbnail) {
-        const image = document.createElement('img');
-        image.src = src.thumbnail;
-        image.alt = '';
-        thumb.append(image);
-      } else thumb.textContent = 'Sem prévia';
-      const name = document.createElement('div');
-      name.className = 'name';
-      if (src.icon) {
-        const icon = document.createElement('img');
-        icon.src = src.icon;
-        icon.alt = '';
-        name.append(icon);
-      }
-      const text = document.createElement('span');
-      text.textContent = src.name;
-      name.append(text);
-      button.append(thumb, name);
-      button.onclick = () => {
-        selected = src.id;
-        start.disabled = false;
-        render();
-      };
-      button.ondblclick = () => choose();
-      grid.append(button);
+      if (src.type === 'screen') src.name = choices.length > 1 ? `Tela ${++screen}` : 'Tela inteira';
+      grid.append(card(src));
     }
+    grid.scrollTop = top;
   }
 
   async function choose() {
@@ -122,32 +160,37 @@
     await window.capturePicker.choose(selected, audio.checked);
   }
 
+  // Atualiza a lista enquanto o seletor está aberto: um jogo aberto agora aparece sem reabrir.
+  async function refresh(first) {
+    try {
+      const result = await window.capturePicker.list();
+      sources = result.sources;
+      if (first) audio.checked = result.audio;
+      render();
+    } catch {
+      if (first) grid.textContent = 'Não foi possível listar as telas e aplicativos.';
+    }
+  }
+
   document.querySelectorAll('[data-filter]').forEach((btn) => {
     btn.onclick = () => {
       filter = btn.dataset.filter;
       document.querySelectorAll('[data-filter]').forEach((b) => b.classList.toggle('active', b === btn));
       selected = null;
       start.disabled = true;
-      describeAudio();
+      describe();
       render();
     };
   });
   document.getElementById('cancel').onclick = () => window.capturePicker.cancel();
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') window.capturePicker.cancel();
+    if (e.key === 'Enter') choose();
   });
   start.onclick = choose;
-  describeAudio();
-  window.capturePicker
-    .list()
-    .then((result) => {
-      sources = result.sources;
-      audio.checked = result.audio;
-      render();
-    })
-    .catch(() => {
-      grid.textContent = 'Não foi possível listar as telas e aplicativos.';
-    });
+  describe();
+  refresh(true);
+  setInterval(() => refresh(false), 4000);
 </script>
 </body>
 </html>

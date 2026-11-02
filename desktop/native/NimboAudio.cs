@@ -4,11 +4,15 @@
 //
 //   nimbo-audio.exe exclude <pid>   tudo menos o processo e seus filhos (o próprio Nimbo)
 //   nimbo-audio.exe window <hwnd>   só o aplicativo dono da janela (e seus filhos)
+//   nimbo-audio.exe list            janelas minimizadas, uma por linha em JSON (jogos em tela cheia
+//                                   se minimizam ao perder o foco e somem da lista do Chromium)
+//   nimbo-audio.exe restore <hwnd>  traz a janela de volta (o jogo volta à tela ao ser escolhido)
 //
 // Termina quando a entrada padrão fecha (o Nimbo saiu) ou em caso de erro (código != 0).
 // Compilar: csc /platform:x64 /optimize /out:nimbo-audio.exe NimboAudio.cs
 using System;
 using System.IO;
+using System.Text;
 using System.Runtime.InteropServices;
 using System.Threading;
 
@@ -122,6 +126,66 @@ namespace Nimbo
         [DllImport("user32.dll")]
         static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
 
+        delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
+        [DllImport("user32.dll")] static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
+        [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hwnd);
+        [DllImport("user32.dll")] static extern bool IsIconic(IntPtr hwnd);
+        [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr hwnd, uint cmd);
+        [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr hwnd, int index);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int max);
+        [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr hwnd, int cmd);
+        [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hwnd);
+        [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr hwnd, int attribute, out int value, int size);
+        [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
+        [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern bool QueryFullProcessImageName(IntPtr process, int flags, StringBuilder path, ref int size);
+
+        static string Json(string value)
+        {
+            var sb = new StringBuilder("\"");
+            foreach (char c in value)
+            {
+                if (c == '"' || c == '\\') sb.Append('\\').Append(c);
+                else if (c < 32) sb.Append("\\u").Append(((int)c).ToString("x4"));
+                else sb.Append(c);
+            }
+            return sb.Append('"').ToString();
+        }
+
+        static string ProcessPath(uint pid)
+        {
+            IntPtr process = OpenProcess(0x1000, false, pid);
+            if (process == IntPtr.Zero) return "";
+            var path = new StringBuilder(1024);
+            int size = path.Capacity;
+            bool ok = QueryFullProcessImageName(process, 0, path, ref size);
+            CloseHandle(process);
+            return ok ? path.ToString() : "";
+        }
+
+        static int ListMinimized()
+        {
+            var output = new StringBuilder();
+            EnumWindows((hwnd, _) =>
+            {
+                if (!IsWindowVisible(hwnd) || !IsIconic(hwnd)) return true;
+                if (GetWindow(hwnd, 4) != IntPtr.Zero) return true; // tem dono: diálogo, não app
+                if ((GetWindowLong(hwnd, -20) & 0x80) != 0) return true; // WS_EX_TOOLWINDOW
+                int cloaked;
+                if (DwmGetWindowAttribute(hwnd, 14, out cloaked, 4) == 0 && cloaked != 0) return true;
+                var title = new StringBuilder(512);
+                if (GetWindowText(hwnd, title, title.Capacity) == 0) return true;
+                uint pid;
+                GetWindowThreadProcessId(hwnd, out pid);
+                output.Append("{\"hwnd\":\"").Append(hwnd.ToInt64()).Append("\",\"pid\":").Append(pid)
+                    .Append(",\"title\":").Append(Json(title.ToString()))
+                    .Append(",\"path\":").Append(Json(ProcessPath(pid))).Append("}\n");
+                return true;
+            }, IntPtr.Zero);
+            Console.Out.Write(output.ToString());
+            return 0;
+        }
+
         static int Fail(string message)
         {
             Console.Error.WriteLine("ERROR " + message);
@@ -131,7 +195,16 @@ namespace Nimbo
         [MTAThread]
         static int Main(string[] args)
         {
-            if (args.Length != 2) return Fail("uso: exclude <pid> | window <hwnd>");
+            if (args.Length == 1 && args[0] == "list") return ListMinimized();
+            if (args.Length == 2 && args[0] == "restore")
+            {
+                long target;
+                if (!long.TryParse(args[1], out target)) return Fail("janela inválida");
+                ShowWindow(new IntPtr(target), 9); // SW_RESTORE
+                SetForegroundWindow(new IntPtr(target));
+                return 0;
+            }
+            if (args.Length != 2) return Fail("uso: exclude <pid> | window <hwnd> | list | restore <hwnd>");
             uint pid;
             int mode;
             if (args[0] == "exclude")

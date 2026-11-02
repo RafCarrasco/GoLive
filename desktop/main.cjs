@@ -2,7 +2,7 @@
 // sem novo executável) e acrescenta o que o navegador não faz bem: seletor de tela/janela, áudio
 // sem eco (capturador nativo) e login do Google pelo navegador do sistema.
 const { app, BrowserWindow, desktopCapturer, dialog, ipcMain, session, shell, Menu } = require('electron');
-const { spawn } = require('child_process');
+const { execFile, spawn } = require('child_process');
 const crypto = require('crypto');
 const http = require('http');
 const path = require('path');
@@ -125,6 +125,44 @@ handleApp('nimbo:capture:audio', (_event, wanted) => {
   audioWanted = Boolean(wanted);
 });
 
+// Jogos em tela cheia se minimizam quando você troca para o Nimbo, e o Chromium não lista janelas
+// minimizadas. O capturador nativo lista essas janelas; ao escolher uma, ela volta à tela.
+function listMinimized() {
+  return new Promise((resolve) => {
+    execFile(AUDIO_HELPER, ['list'], { timeout: 2000, windowsHide: true }, (error, stdout) => {
+      if (error) return resolve([]);
+      const windows = [];
+      for (const line of stdout.split('\n')) {
+        try {
+          if (line.trim()) windows.push(JSON.parse(line));
+        } catch {
+          // Linha incompleta: ignora.
+        }
+      }
+      resolve(windows);
+    });
+  });
+}
+
+async function minimizedSources(known) {
+  const seen = new Set(known.map((s) => s.id.split(':')[1]));
+  const own = new Set(app.getAppMetrics().map((m) => m.pid));
+  const windows = (await listMinimized()).filter((w) => !seen.has(w.hwnd) && !own.has(w.pid));
+  return Promise.all(
+    windows.map(async (w) => {
+      let icon = '';
+      if (w.path) icon = (await app.getFileIcon(w.path, { size: 'small' }).catch(() => null))?.toDataURL() || '';
+      return { id: `window:${w.hwnd}:0`, name: w.title, type: 'window', thumbnail: '', icon, minimized: true };
+    }),
+  );
+}
+
+function restoreWindow(hwnd) {
+  return new Promise((resolve) =>
+    execFile(AUDIO_HELPER, ['restore', hwnd], { timeout: 2000, windowsHide: true }, () => resolve()),
+  );
+}
+
 function chooseCaptureSource() {
   return new Promise((resolve) => {
     let settled = false;
@@ -132,8 +170,8 @@ function chooseCaptureSource() {
     const picker = new BrowserWindow({
       parent: mainWindow,
       modal: true,
-      width: 860,
-      height: 580,
+      width: 880,
+      height: 640,
       minWidth: 680,
       minHeight: 500,
       title: 'Nimbo · Escolher o que transmitir',
@@ -156,6 +194,7 @@ function chooseCaptureSource() {
       resolve(result);
     };
     const authorized = (event) => event.sender === picker.webContents;
+    const minimizedById = new Map();
     const ownWindows = () =>
       BrowserWindow.getAllWindows().map((w) => w.getMediaSourceId());
     picker.on('closed', () => settle(null));
@@ -167,23 +206,29 @@ function chooseCaptureSource() {
         thumbnailSize: { width: 400, height: 250 },
         fetchWindowIcons: true,
       });
-      return {
-        audio: audioWanted,
-        sources: sources
-          .filter((s) => !own.includes(s.id))
-          .map((s) => ({
-            id: s.id,
-            name: s.name,
-            type: s.id.startsWith('screen:') ? 'screen' : 'window',
-            thumbnail: s.thumbnail.isEmpty() ? '' : s.thumbnail.toDataURL(),
-            icon: s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : '',
-          })),
-      };
+      const visible = sources
+        .filter((s) => !own.includes(s.id))
+        .map((s) => ({
+          id: s.id,
+          name: s.name,
+          type: s.id.startsWith('screen:') ? 'screen' : 'window',
+          thumbnail: s.thumbnail.isEmpty() ? '' : s.thumbnail.toDataURL(),
+          icon: s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : '',
+        }));
+      const minimized = await minimizedSources(sources);
+      for (const m of minimized) minimizedById.set(m.id, m);
+      return { audio: audioWanted, sources: [...visible, ...minimized] };
     });
     ipcMain.handle('nimbo:picker:choose', async (event, { id, audio }) => {
       if (!authorized(event)) throw new Error('Unauthorized');
       const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 0, height: 0 } });
-      const source = sources.find((s) => s.id === id);
+      let source = sources.find((s) => s.id === id);
+      const minimized = minimizedById.get(id);
+      if (!source && minimized) {
+        await restoreWindow(id.split(':')[1]);
+        await new Promise((r) => setTimeout(r, 700));
+        source = { id, name: minimized.name };
+      }
       if (!source) throw new Error('Fonte não encontrada');
       settle({ source, audio: Boolean(audio) });
       return true;
