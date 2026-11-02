@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { desktop } from '../desktop';
+import { playSound, setSoundsEnabled, soundsEnabled } from '../lib/sounds';
 import { Check, LoaderCircle } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import {
@@ -11,6 +12,29 @@ import {
   type RoleDef,
 } from '../community';
 import { supportsOwnAudioRestriction, type CaptureSettings } from '../live/capture';
+
+function SoundsOption() {
+  const [on, setOn] = useState(soundsEnabled);
+  const choose = (value: boolean) => {
+    setSoundsEnabled(value);
+    setOn(value);
+    if (value) playSound('join');
+  };
+  return (
+    <div className="option-group">
+      <span className="option-label">Avisos sonoros</span>
+      <div className="segmented wide">
+        <button className={on ? 'on' : ''} onClick={() => choose(true)}>
+          Ligados
+        </button>
+        <button className={on ? '' : 'on'} onClick={() => choose(false)}>
+          Desligados
+        </button>
+      </div>
+      <small className="muted">Quando alguém entra ou sai do canal e quando uma live começa.</small>
+    </div>
+  );
+}
 
 export function StreamSettingsModal({
   settings,
@@ -112,6 +136,7 @@ export function StreamSettingsModal({
               : 'Somente vídeo.'}
         </small>
       </div>
+      <SoundsOption />
       <small className="muted">
         Cada pessoa assistindo usa parte do seu upload. Com muitos espectadores, 720p ou 30 FPS deixam a live
         mais estável.

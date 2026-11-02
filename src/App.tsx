@@ -14,6 +14,7 @@ import {
 import { useAuth } from './hooks/useAuth';
 import { useCommunity, useRoomsPresence } from './hooks/useCommunity';
 import { useLiveRoom } from './hooks/useLiveRoom';
+import { useRoomSounds } from './hooks/useRoomSounds';
 import { loadCaptureSettings, saveCaptureSettings, type StreamKind } from './live/capture';
 import { liveKey } from './live/room';
 import { signOutAccount } from './session';
@@ -49,6 +50,7 @@ function Community({ uid }: { uid: string }) {
     onKicked: (message) => toast.error(message),
   });
   const { snapshot } = live;
+  useRoomSounds(snapshot);
   const room = snapshot.room;
 
   // Lives abertas no palco, por chave "uid:screen" / "uid:camera".
