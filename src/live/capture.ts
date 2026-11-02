@@ -1,4 +1,4 @@
-import { desktop, desktopAudioTrack } from '../desktop';
+import { desktop, desktopAudioTrack, watchGameFor } from '../desktop';
 
 export type StreamKind = 'screen' | 'camera';
 export type CaptureSurface = 'monitor' | 'window';
@@ -95,6 +95,7 @@ async function captureScreenDesktop(settings: CaptureSettings, wantsAudio: boole
   try {
     const audio = await desktopAudioTrack();
     if (audio) stream.addTrack(audio);
+    await watchGameFor(stream);
   } catch (e) {
     stream.getTracks().forEach((t) => t.stop());
     throw e;

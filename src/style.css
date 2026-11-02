@@ -1253,3 +1253,50 @@ h2 {
   line-height: 1.45;
   text-align: center;
 }
+.update-pill {
+  position: fixed;
+  top: 10px;
+  right: 14px;
+  z-index: 65;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 11px;
+  border-radius: 13px;
+  background: rgba(46, 204, 113, 0.14);
+  border: 1px solid rgba(46, 204, 113, 0.55);
+  color: #5ee59a;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 4px 16px rgba(46, 204, 113, 0.15);
+}
+.update-pill:hover:not(:disabled) {
+  background: rgba(46, 204, 113, 0.24);
+}
+.release-notes section + section {
+  margin-top: 14px;
+}
+.release-notes h3 {
+  font-size: 13px;
+  margin: 0 0 6px;
+}
+.release-notes ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.release-notes li {
+  display: flex;
+  gap: 9px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.release-notes li svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--primary);
+}

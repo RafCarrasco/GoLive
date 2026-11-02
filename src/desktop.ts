@@ -12,6 +12,10 @@ type DesktopBridge = {
   // A partir do app 0.3.2: aviso de atualização baixada, mostrado pelo site.
   watchUpdate?(onReady: (info: { version: string }) => void): Promise<Result<{ version: string } | null>>;
   installUpdate?(): Promise<void>;
+  // A partir do app 0.3.4: avisa quando o jogo transmitido sai ou volta para a frente.
+  startGameWatch?(): Promise<Result<{ id: string; label: string } | null>>;
+  stopGameWatch?(id: string): Promise<void>;
+  onGameState?(id: string, onChange: (active: boolean) => void): () => void;
 };
 
 export const desktop = (window as { nimboDesktop?: DesktopBridge }).nimboDesktop;
@@ -104,4 +108,48 @@ export async function desktopAudioTrack(): Promise<MediaStreamTrack | null> {
     void context.close();
   };
   return track;
+}
+
+// Jogo em tela cheia transmitido pelo monitor: avisa quando ele sai da frente (Alt+Tab) para o
+// site mostrar a tela de pausa no lugar da área de trabalho.
+export type GameWatch = { label: string; onChange(cb: (active: boolean) => void): void; stop(): void };
+const gameWatches = new WeakMap<MediaStream, GameWatch>();
+export const gameWatchOf = (stream: MediaStream) => gameWatches.get(stream);
+
+export async function watchGameFor(stream: MediaStream) {
+  if (!desktop?.startGameWatch || !desktop.onGameState) return;
+  const started = await desktop.startGameWatch();
+  if (!started.ok || !started.value) return;
+  const { id, label } = started.value;
+  const listeners: Array<(active: boolean) => void> = [];
+  let current: boolean | null = null;
+  const unsubscribe = desktop.onGameState(id, (active) => {
+    current = active;
+    listeners.forEach((cb) => cb(active));
+  });
+  let stopped = false;
+  const watch: GameWatch = {
+    label,
+    // Quem se inscreve depois recebe na hora o último estado conhecido.
+    onChange: (cb) => {
+      listeners.push(cb);
+      if (current !== null) cb(current);
+    },
+    stop: () => {
+      if (stopped) return;
+      stopped = true;
+      unsubscribe();
+      void desktop?.stopGameWatch?.(id);
+    },
+  };
+  gameWatches.set(stream, watch);
+  const video = stream.getVideoTracks()[0];
+  if (video) {
+    const stop = video.stop.bind(video);
+    video.stop = () => {
+      stop();
+      watch.stop();
+    };
+    video.addEventListener('ended', watch.stop);
+  }
 }

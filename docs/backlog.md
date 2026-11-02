@@ -29,7 +29,7 @@ Ao iniciar ou encerrar a própria live, as lives dos outros congelam por uma fra
 
 ## App e atualizações
 
-### Selo "Atualização disponível" no topo (pedido em 02/11/2026, para a próxima release)
+### ~~Selo "Atualização disponível" no topo~~ (feito na 0.3.4, 02/11/2026)
 Quando houver versão nova, mostrar no canto superior direito da barra do topo um selo verde pequeno
 com ícone de download e o texto "Atualização disponível". Um clique atualiza sozinho: no app,
 reinicia e instala a versão baixada (`desktop.installUpdate`); no site, recarrega a página.

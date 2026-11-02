@@ -10,6 +10,7 @@ import {
   update,
   type Database,
 } from 'firebase/database';
+import { LEVELS, nextQuality, type QualityState } from './quality';
 import type { StreamKind } from './capture';
 
 // Sinalização: rooms/{room}/signals/{destinatário}/{remetente}/{id}
@@ -84,7 +85,46 @@ type LocalLive = {
   announced: MediaStream;
   bitrate: number;
   startedAt: number;
+  // Jogo fora da frente: quem assiste recebe a tela de pausa no lugar do vídeo.
+  paused?: boolean;
 };
+
+// Tela "Pausado · volta já" desenhada num canvas. Fica viva enquanto a sala existir; precisa ser
+// redesenhada de tempos em tempos para o canvas continuar gerando quadros.
+function createPauseTrack(): { track: MediaStreamTrack; stop(): void } {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1280;
+  canvas.height = 720;
+  const ctx = canvas.getContext('2d')!;
+  const icon = new Image();
+  icon.src = '/nimbo-icon-256.png';
+  const draw = () => {
+    const bg = ctx.createRadialGradient(640, 250, 40, 640, 360, 760);
+    bg.addColorStop(0, '#2a2266');
+    bg.addColorStop(1, '#0b1020');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, 1280, 720);
+    if (icon.complete && icon.naturalWidth) ctx.drawImage(icon, 576, 170, 128, 128);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#eef1ff';
+    ctx.font = '700 54px Inter, "Segoe UI", system-ui, sans-serif';
+    ctx.fillText('Pausado', 640, 380);
+    ctx.fillStyle = '#9aa6c4';
+    ctx.font = '400 28px Inter, "Segoe UI", system-ui, sans-serif';
+    ctx.fillText('Saiu do jogo por um instante · volta já', 640, 430);
+  };
+  draw();
+  const timer = setInterval(draw, 500);
+  const track = canvas.captureStream(4).getVideoTracks()[0];
+  track.contentHint = 'detail';
+  return {
+    track,
+    stop: () => {
+      clearInterval(timer);
+      track.stop();
+    },
+  };
+}
 
 // TURN é opcional (VITE_TURN_URLS separado por vírgula, VITE_TURN_USERNAME, VITE_TURN_CREDENTIAL).
 // Sem ele, redes com NAT restritivo não conseguem conexão direta.
@@ -147,6 +187,8 @@ export class LiveRoom {
   private broadcasts: Broadcasts = {};
   private locals = new Map<StreamKind, LocalLive>();
   private announced = new Map<StreamKind, MediaStream>();
+  private pause: { track: MediaStreamTrack; stop(): void } | null = null;
+  private quality = new WeakMap<RTCRtpSender, QualityState>();
   private unsubs: Array<() => void> = [];
   private seen = new Set<string>();
   private joined = false;
@@ -236,7 +278,8 @@ export class LiveRoom {
   private listen() {
     let wasOffline = false;
     const watchdog = setInterval(() => this.checkMissing(), 5000);
-    this.unsubs.push(() => clearInterval(watchdog));
+    const adapt = setInterval(() => void this.adaptQuality(), 3000);
+    this.unsubs.push(() => clearInterval(watchdog), () => clearInterval(adapt));
     this.unsubs.push(
       onValue(ref(this.db, '.info/connected'), (snap) => {
         const connected = snap.val() === true;
@@ -405,13 +448,14 @@ export class LiveRoom {
     const live = this.locals.get(kind);
     const transceivers = peer.transceivers[kind] || [];
     for (const trackKind of ['video', 'audio'] as const) {
-      const track = live?.stream.getTracks().find((t) => t.kind === trackKind) || null;
+      let track = live?.stream.getTracks().find((t) => t.kind === trackKind) || null;
+      if (track && live?.paused && trackKind === 'video') track = (this.pause ??= createPauseTrack()).track;
       const existing = transceivers.find(
         (t) => t.receiver.track.kind === trackKind && t.currentDirection !== 'stopped',
       );
       if (existing) {
         if (existing.sender.track !== track) void existing.sender.replaceTrack(track).catch(() => {});
-        if (track && live && trackKind === 'video') void this.applyBitrate(existing.sender, live.bitrate);
+        if (track && live && trackKind === 'video') void this.applyQuality(existing.sender, live.bitrate);
       } else if (track && live)
         transceivers.push(
           peer.pc.addTransceiver(track, {
@@ -424,11 +468,61 @@ export class LiveRoom {
     if (transceivers.length) peer.transceivers[kind] = transceivers;
   }
 
-  private async applyBitrate(sender: RTCRtpSender, bitrate: number) {
+  // Aplica no envio o nível de qualidade atual desta conexão sobre o bitrate escolhido.
+  private async applyQuality(sender: RTCRtpSender, bitrate: number) {
+    const level = LEVELS[this.quality.get(sender)?.level ?? 0];
     const params = sender.getParameters();
-    if (!params.encodings?.length || params.encodings[0].maxBitrate === bitrate) return;
-    params.encodings[0].maxBitrate = bitrate;
+    const encoding = params.encodings?.[0];
+    if (!encoding) return;
+    const maxBitrate = Math.round(bitrate * level.bitrate);
+    if (
+      encoding.maxBitrate === maxBitrate &&
+      (encoding.scaleResolutionDownBy ?? 1) === level.scale &&
+      encoding.maxFramerate === level.maxFps
+    )
+      return;
+    encoding.maxBitrate = maxBitrate;
+    encoding.scaleResolutionDownBy = level.scale;
+    if (level.maxFps) encoding.maxFramerate = level.maxFps;
+    else delete encoding.maxFramerate;
     await sender.setParameters(params).catch(() => {});
+  }
+
+  // A cada 3 s, mede cada envio de vídeo (perda relatada por quem assiste e se falta banda) e
+  // ajusta o nível só daquela conexão. Os primeiros 15 s de cada live ficam de fora: a estimativa
+  // de banda ainda está subindo.
+  private async adaptQuality() {
+    if (!this.joined || this.closed) return;
+    for (const peer of this.peers.values()) {
+      if (peer.pc.connectionState !== 'connected') continue;
+      const senders: Array<{ sender: RTCRtpSender; live: LocalLive }> = [];
+      for (const [kind, transceivers] of Object.entries(peer.transceivers)) {
+        const live = this.locals.get(kind as StreamKind);
+        const video = transceivers?.find((t) => t.sender.track?.kind === 'video');
+        if (live && video && !live.paused && Date.now() - live.startedAt > 15000) senders.push({ sender: video.sender, live });
+      }
+      for (const { sender, live } of senders) {
+        const stats = await sender.getStats().catch(() => null);
+        if (!stats) continue;
+        let loss = 0;
+        let limited = false;
+        let available = 0;
+        stats.forEach((r) => {
+          if (r.type === 'remote-inbound-rtp' && typeof r.fractionLost === 'number') loss = r.fractionLost;
+          if (r.type === 'outbound-rtp') limited = r.qualityLimitationReason === 'bandwidth';
+          if (r.type === 'candidate-pair' && r.nominated && r.availableOutgoingBitrate)
+            available = r.availableOutgoingBitrate / senders.length;
+        });
+        const state = this.quality.get(sender) ?? { level: 0, bad: 0, good: 0 };
+        const current = live.bitrate * LEVELS[state.level].bitrate;
+        const next = nextQuality(state, { loss, limited, available, current });
+        this.quality.set(sender, next);
+        if (next.level !== state.level) {
+          console.info('[nimbo] qualidade', next.level, 'perda', loss.toFixed(3), 'banda', Math.round(available / 1000), 'kbps');
+          await this.applyQuality(sender, live.bitrate);
+        }
+      }
+    }
   }
 
   private async handle(id: string, peer: Peer, msg: Signal) {
@@ -582,9 +676,19 @@ export class LiveRoom {
     const old = live.stream;
     live.stream = stream;
     live.bitrate = bitrate;
+    live.paused = false;
     this.watchEnded(stream, kind);
     for (const peer of this.peers.values()) this.syncSenders(peer, kind);
     old.getTracks().forEach((t) => t.stop());
+    this.emit();
+  }
+
+  // O jogo transmitido saiu (ou voltou) para a frente. Vale só para a live atual desse tipo.
+  setPaused(kind: StreamKind, stream: MediaStream, paused: boolean) {
+    const live = this.locals.get(kind);
+    if (!live || live.stream !== stream || Boolean(live.paused) === paused) return;
+    live.paused = paused;
+    for (const peer of this.peers.values()) this.syncSenders(peer, kind);
     this.emit();
   }
 
@@ -603,6 +707,8 @@ export class LiveRoom {
 
   async leave() {
     await this.stopBroadcast();
+    this.pause?.stop();
+    this.pause = null;
     this.joined = false;
     this.unsubs.forEach((u) => u());
     this.unsubs = [];
@@ -621,6 +727,7 @@ export class LiveRoom {
   // Encerramento síncrono para fechamento da aba: o onDisconnect cuida do banco.
   dispose() {
     this.closed = true;
+    this.pause?.stop();
     this.unsubs.forEach((u) => u());
     for (const live of this.locals.values()) live.stream.getTracks().forEach((t) => t.stop());
     for (const peer of this.peers.values()) peer.pc.close();

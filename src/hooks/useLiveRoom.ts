@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { gameWatchOf } from '../desktop';
 import { db, useEmulators } from '../firebase';
 import { LiveRoom, testTurn, type LiveSnapshot } from '../live/room';
 import {
@@ -103,6 +104,7 @@ export function useLiveRoom(uid: string, handlers: Handlers) {
       }
       if (replace) await room.replaceSource(kind, stream, maxBitrate(kind, settings));
       else await room.startBroadcast(stream, kind, maxBitrate(kind, settings));
+      gameWatchOf(stream)?.onChange((active) => room.setPaused(kind, stream, !active));
     } finally {
       setBusy('');
     }

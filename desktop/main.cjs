@@ -271,7 +271,7 @@ function chooseCaptureSource() {
         const hwnd = id.split(':')[1];
         const monitor = await gameCapture(hwnd);
         if (monitor) {
-          settle({ source: monitor, label: source.name, audioArgs: ['window', hwnd], audio: Boolean(audio) });
+          settle({ source: monitor, label: source.name, audioArgs: ['window', hwnd], game: hwnd, audio: Boolean(audio) });
           return true;
         }
       }
@@ -339,9 +339,49 @@ handleApp('nimbo:audio:stop', (_event, id) => {
   setTimeout(() => child.kill(), 1500).unref();
 });
 
+// ---------- Jogo em tela cheia: pausa quando sai da frente ----------
+// Transmitindo o monitor de um jogo, um Alt+Tab mostraria a área de trabalho. O site troca o vídeo
+// por uma tela de pausa enquanto o jogo não estiver na frente.
+let pendingGame = null;
+const gameWatches = new Map();
+
+handleApp('nimbo:game:start', (event) => {
+  const game = pendingGame;
+  pendingGame = null;
+  if (!game) return null;
+  const id = crypto.randomUUID();
+  const child = spawn(AUDIO_HELPER, ['watch', game.hwnd], { windowsHide: true });
+  const target = event.sender;
+  let buffer = '';
+  child.stdout.setEncoding('utf8');
+  child.stdout.on('data', (data) => {
+    buffer += data;
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines)
+      if (line.trim() && !target.isDestroyed()) target.send('nimbo:game:state', id, line.trim() === '1');
+  });
+  child.on('exit', () => {
+    gameWatches.delete(id);
+    if (!target.isDestroyed()) target.send('nimbo:game:state', id, false);
+  });
+  child.on('error', () => gameWatches.delete(id));
+  gameWatches.set(id, child);
+  return { id, label: game.label };
+});
+
+handleApp('nimbo:game:stop', (_event, id) => {
+  const child = gameWatches.get(id);
+  if (!child) return;
+  gameWatches.delete(id);
+  child.stdin.end();
+  setTimeout(() => child.kill(), 1500).unref();
+});
+
 app.on('before-quit', () => {
-  for (const child of audioSessions.values()) child.kill();
+  for (const child of [...audioSessions.values(), ...gameWatches.values()]) child.kill();
   audioSessions.clear();
+  gameWatches.clear();
 });
 
 // ---------- Atualização automática ----------
@@ -415,6 +455,7 @@ app.whenReady().then(async () => {
       if (!appOnly(request.securityOrigin)) return callback({});
       const selected = await chooseCaptureSource();
       if (!selected) return callback({});
+      pendingGame = selected.game ? { hwnd: selected.game, label: selected.label } : null;
       pendingAudio = selected.audio
         ? { args: selected.audioArgs || audioArgs(selected.source), label: selected.label || selected.source.name }
         : null;

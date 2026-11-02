@@ -8,6 +8,8 @@
 //                                   se minimizam ao perder o foco e somem da lista do Chromium)
 //   nimbo-audio.exe restore <hwnd>  traz a janela de volta (o jogo volta à tela ao ser escolhido)
 //   nimbo-audio.exe info <hwnd>     retângulo da janela e do monitor dela, e se cobre o monitor
+//   nimbo-audio.exe watch <hwnd>    escreve 1 quando o jogo está na frente e 0 quando sai (Alt+Tab,
+//                                   minimizado ou fechado), a cada mudança, até a entrada fechar
 //
 // Termina quando a entrada padrão fecha (o Nimbo saiu) ou em caso de erro (código != 0).
 // Compilar: csc /platform:x64 /optimize /out:nimbo-audio.exe NimboAudio.cs
@@ -206,6 +208,40 @@ namespace Nimbo
             return 0;
         }
 
+        [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] static extern bool IsWindow(IntPtr hwnd);
+
+        static int WatchForeground(IntPtr hwnd)
+        {
+            uint gamePid;
+            GetWindowThreadProcessId(hwnd, out gamePid);
+            var stop = new ManualResetEvent(false);
+            var watcher = new Thread(() =>
+            {
+                try { Console.OpenStandardInput().CopyTo(Stream.Null); } catch { }
+                stop.Set();
+            });
+            watcher.IsBackground = true;
+            watcher.Start();
+            int last = -1;
+            do
+            {
+                uint foregroundPid = 0;
+                IntPtr foreground = GetForegroundWindow();
+                if (foreground != IntPtr.Zero) GetWindowThreadProcessId(foreground, out foregroundPid);
+                // Qualquer janela do próprio jogo na frente conta (menus, launcher interno).
+                int active = IsWindow(hwnd) && !IsIconic(hwnd) && foregroundPid == gamePid ? 1 : 0;
+                if (active != last)
+                {
+                    Console.Out.Write(active + "\n");
+                    Console.Out.Flush();
+                    last = active;
+                }
+                if (!IsWindow(hwnd)) return 0;
+            } while (!stop.WaitOne(250));
+            return 0;
+        }
+
         static int ListMinimized()
         {
             var output = new StringBuilder();
@@ -239,6 +275,12 @@ namespace Nimbo
         static int Main(string[] args)
         {
             if (args.Length == 1 && args[0] == "list") return ListMinimized();
+            if (args.Length == 2 && args[0] == "watch")
+            {
+                long watched;
+                if (!long.TryParse(args[1], out watched)) return Fail("janela inválida");
+                return WatchForeground(new IntPtr(watched));
+            }
             if (args.Length == 2 && args[0] == "info")
             {
                 long target;
