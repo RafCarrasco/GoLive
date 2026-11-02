@@ -256,7 +256,7 @@ function Community({ uid }: { uid: string }) {
           />
         ) : (
           <div className="home">
-            <img src="/nimbo-mascot.svg" alt="" />
+            <img src="/nimbo-icon-256.png" alt="" />
             <h1>Olá, {nickname}</h1>
             <p className="muted">Escolha um canal na barra lateral para assistir às lives ou transmitir.</p>
           </div>

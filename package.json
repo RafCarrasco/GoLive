@@ -1,7 +1,7 @@
 {
   "name": "nimbo",
   "productName": "Nimbo",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": true,
   "type": "module",
   "scripts": {
@@ -15,8 +15,7 @@
     "emulators": "firebase emulators:start --only auth,database --project demo-nimbo",
     "dev:local": "vite --mode emulator",
     "emulator:approve": "node scripts/emulator-approve.mjs",
-    "desktop:audio": "node scripts/build-desktop-audio.mjs",
-    "desktop:icon": "electron scripts/desktop-icon.cjs"
+    "desktop:audio": "node scripts/build-desktop-audio.mjs"
   },
   "dependencies": {
     "electron-updater": "^6.8.11"

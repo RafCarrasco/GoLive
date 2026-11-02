@@ -185,7 +185,7 @@ export function Stage({
       <div className="stage-area" ref={area}>
         {shown.length === 0 ? (
           <div className="stage-empty">
-            <img src="/nimbo-mascot.svg" alt="" />
+            <img src="/nimbo-icon-256.png" alt="" />
             <strong>{active.length ? 'Escolha uma live para assistir' : 'Ninguém ao vivo por aqui'}</strong>
             <span className="muted">
               {active.length

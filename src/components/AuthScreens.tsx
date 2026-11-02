@@ -9,7 +9,7 @@ function Gate({ children }: { children: React.ReactNode }) {
   return (
     <div className="gate">
       <div className="gate-card">
-        <img className="gate-mascot" src="/nimbo-mascot.svg" alt="Nimbo" />
+        <img className="gate-mascot" src="/nimbo-icon-256.png" alt="Nimbo" />
         {children}
       </div>
     </div>

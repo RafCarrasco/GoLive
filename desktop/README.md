@@ -24,8 +24,9 @@ SmartScreen avisa na primeira vez.
 O app instalado consulta o último Release de `RafCarrasco/Nimbo` ao abrir e a cada 6 horas
 (`electron-updater`). Para publicar uma versão: suba `version` no `package.json`, rode `npm run desktop:pack`
 e anexe ao Release os três arquivos acima. Mudanças só no site não precisam de versão nova do app.
-O capturador de áudio é compilado com o `csc.exe` que já vem no Windows. `npm run desktop:icon`
-regenera `icon.ico` a partir de `public/nimbo-mascot.svg`.
+O capturador de áudio é compilado com o `csc.exe` que já vem no Windows. O ícone (`icon.ico`, usado no
+executável, atalhos, barra de tarefas e instalador) vem do pacote em `assets/brand/`; os antigos ficam
+em `assets/brand/legacy/`.
 
 ## Testar com os emuladores
 

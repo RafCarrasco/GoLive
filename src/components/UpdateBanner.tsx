@@ -45,7 +45,7 @@ export function UpdateBanner({ live }: { live: boolean }) {
   const isApp = Boolean(appVersion);
   return (
     <div className="update-card" role="status">
-      <img src="/nimbo-mascot.svg" alt="" />
+      <img src="/nimbo-icon-128.png" alt="" />
       <div className="update-text">
         <strong>{isApp ? `Nimbo ${appVersion} está pronto` : 'Nova versão do Nimbo'}</strong>
         <span>

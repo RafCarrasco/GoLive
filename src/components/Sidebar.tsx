@@ -82,7 +82,7 @@ export function Sidebar({
   return (
     <nav className="sidebar" aria-label="Comunidade">
       <header className="sidebar-head">
-        <img className="brand-mark" src="/nimbo-mascot.svg" alt="" />
+        <img className="brand-mark" src="/nimbo-icon-128.png" alt="" />
         <strong>Nimbo</strong>
         {staff && (
           <button
