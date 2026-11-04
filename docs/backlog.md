@@ -68,3 +68,15 @@ Restrições: sem Firebase Storage para fotos (combinado no handoff) e custo zer
 - **Sugestão:** A como padrão e B como "Trocar foto" no perfil; sem foto, continua a inicial colorida.
   Moderação: o proprietário pode remover a foto de alguém (regra de escrita para owner).
 
+### Tela do instalador mais bonita (pedido em 04/11/2026, para a próxima atualização do app)
+Hoje a instalação e cada atualização mostram a janelinha padrão do NSIS ("Nimbo Setup ·
+Installing, please wait..."), em inglês e cinza.
+
+- **Atualização sem janela:** chamar `autoUpdater.quitAndInstall(true, true)` (instalação silenciosa
+  e reabre o app sozinho). Quem atualiza pelo selo/cartão não vê mais o instalador. É o ganho maior.
+- **Primeira instalação:** o instalador de um clique do NSIS quase não deixa mudar o visual. Dá para
+  pôr em português (`nsis.installerLanguages: ['pt_BR']`, "Instalando, aguarde...") e trocar ícone e
+  cabeçalho. Para uma tela realmente no estilo do Nimbo (roxo, mascote, barra animada), as opções
+  são uma página customizada em script NSIS (`nsis.include`) ou trocar o instalador por um próprio
+  (um app Electron pequeno que baixa e instala, com a nossa tela). Avaliar custo antes.
+
