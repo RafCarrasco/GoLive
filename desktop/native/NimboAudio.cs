@@ -4,6 +4,8 @@
 //
 //   nimbo-audio.exe exclude <pid>   tudo menos o processo e seus filhos (o próprio Nimbo)
 //   nimbo-audio.exe window <hwnd>   só o aplicativo dono da janela (e seus filhos)
+//   nimbo-audio.exe include <pid>   só o processo e seus filhos
+//   nimbo-audio.exe processes       processos em execução, um por linha em JSON
 //   nimbo-audio.exe list            janelas de aplicativo abertas, uma por linha em JSON, inclusive
 //                                   minimizadas e protegidas (jogos em tela cheia se minimizam ao
 //                                   perder o foco, e jogos com anticheat podem sumir da lista do
@@ -255,7 +257,8 @@ namespace Nimbo
             EnumWindows((hwnd, _) =>
             {
                 var title = new StringBuilder(512);
-                if (GetWindowText(hwnd, title, title.Capacity) == 0) return true;
+                // Sem título só entra se estiver visível (o Nimbo usa o nome do executável).
+                if (GetWindowText(hwnd, title, title.Capacity) == 0 && !IsWindowVisible(hwnd)) return true;
                 var cls = new StringBuilder(256);
                 GetClassName(hwnd, cls, cls.Capacity);
                 int cloaked;
@@ -285,6 +288,22 @@ namespace Nimbo
             return 0;
         }
 
+        // Processos em execução (nome sem .exe): acha o jogo mesmo quando nenhuma janela dele aparece.
+        static int ListProcesses()
+        {
+            var output = new StringBuilder();
+            foreach (var process in System.Diagnostics.Process.GetProcesses())
+            {
+                try
+                {
+                    output.Append("{\"pid\":").Append(process.Id).Append(",\"name\":").Append(Json(process.ProcessName)).Append("}\n");
+                }
+                catch { }
+            }
+            Console.Out.Write(output.ToString());
+            return 0;
+        }
+
         static int Fail(string message)
         {
             Console.Error.WriteLine("ERROR " + message);
@@ -297,6 +316,7 @@ namespace Nimbo
             // Títulos de janela em UTF-8 (acentos e símbolos chegam certos ao Nimbo).
             Console.OutputEncoding = new UTF8Encoding(false);
             if (args.Length == 1 && args[0] == "list") return ListWindows();
+            if (args.Length == 1 && args[0] == "processes") return ListProcesses();
             if (args.Length == 2 && args[0] == "watch")
             {
                 long watched;
@@ -323,6 +343,11 @@ namespace Nimbo
             if (args[0] == "exclude")
             {
                 mode = 1;
+                if (!uint.TryParse(args[1], out pid)) return Fail("pid inválido");
+            }
+            else if (args[0] == "include")
+            {
+                mode = 0;
                 if (!uint.TryParse(args[1], out pid)) return Fail("pid inválido");
             }
             else if (args[0] == "window")

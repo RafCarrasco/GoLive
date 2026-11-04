@@ -136,7 +136,9 @@
       image.alt = '';
       thumb.append(image);
     } else
-      thumb.textContent = src.minimized
+      thumb.textContent = src.process
+        ? 'Jogo aberto: transmite a tela dele'
+        : src.minimized
         ? 'Minimizado: volta à tela ao transmitir'
         : src.id.startsWith('window:')
           ? 'Sem prévia: a imagem aparece na live'

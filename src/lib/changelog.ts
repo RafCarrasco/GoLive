@@ -6,7 +6,11 @@ export const CHANGELOG: Release[] = [
   {
     version: '0.3.7',
     date: '04/11/2026',
-    items: ['Botão "Não achou o jogo?" no topo do seletor, nas duas abas, para ver o diagnóstico da captura.'],
+    items: [
+      'Jogo aberto sem janela visível (Valorant com anticheat, por exemplo) aparece em Aplicativos pelo nome do jogo: transmite a tela dele, com o som só do jogo.',
+      'Janelas sem título também entram na lista, com o nome do programa.',
+      'Botão "Não achou o jogo?" no topo do seletor, nas duas abas, para ver o diagnóstico da captura.',
+    ],
   },
   {
     version: '0.3.6',

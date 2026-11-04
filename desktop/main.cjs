@@ -148,9 +148,36 @@ function listWindows() {
   });
 }
 
-// Executáveis de jogos conhecidos; janelas deles entram no seletor mesmo que caiam nos filtros.
-const GAME_EXE =
-  /\\(valorant(-win64-shipping)?|cs2|csgo|league of legends|fortniteclient-win64-shipping|r5apex(_dx12)?|gta5|gtav|rocketleague|overwatch|dota2|eldenring|javaw|robloxplayerbeta|cod|tslgame|destiny2|rainbowsix|marvel-win64-shipping|deadlock|project8)\.exe$/i;
+// Jogos conhecidos (nome do executável sem .exe) e o nome mostrado no seletor. Janelas e processos
+// deles entram no seletor mesmo que caiam nos filtros ou que nenhuma janela apareça.
+const GAMES = {
+  'valorant-win64-shipping': 'VALORANT',
+  valorant: 'VALORANT',
+  cs2: 'Counter-Strike 2',
+  csgo: 'Counter-Strike',
+  'league of legends': 'League of Legends',
+  'fortniteclient-win64-shipping': 'Fortnite',
+  r5apex: 'Apex Legends',
+  r5apex_dx12: 'Apex Legends',
+  gta5: 'GTA V',
+  gtav: 'GTA V',
+  rocketleague: 'Rocket League',
+  overwatch: 'Overwatch 2',
+  dota2: 'Dota 2',
+  eldenring: 'Elden Ring',
+  javaw: 'Minecraft',
+  robloxplayerbeta: 'Roblox',
+  cod: 'Call of Duty',
+  tslgame: 'PUBG',
+  destiny2: 'Destiny 2',
+  rainbowsix: 'Rainbow Six Siege',
+  'marvel-win64-shipping': 'Marvel Rivals',
+  deadlock: 'Deadlock',
+  project8: 'Deadlock',
+};
+const gameName = (exe) => GAMES[String(exe || '').toLowerCase().replace(/\.exe$/, '')] || '';
+const exeOf = (filePath) => String(filePath || '').split(/[\\/]/).pop();
+const GAME_EXE = { test: (filePath) => Boolean(gameName(exeOf(filePath))) };
 // Tela cheia só conta se a janela estiver de fato visível (o Windows tem janelas de sistema escondidas
 // do tamanho da tela); executável conhecido e janela da Unreal Engine valem sempre.
 const isGameLike = (w) =>
@@ -159,6 +186,25 @@ const isGameLike = (w) =>
   (w.fullscreen && w.visible && !w.cloaked && !w.tool);
 // Filtros de sempre: janela visível, sem dono, que não é auxiliar nem está escondida pelo Windows.
 const isAppWindow = (w) => w.visible && !w.owned && !w.tool && !w.cloaked;
+
+let lastProcesses = [];
+
+function listProcesses() {
+  return new Promise((resolve) => {
+    execFile(AUDIO_HELPER, ['processes'], { timeout: 3000, windowsHide: true }, (error, stdout) => {
+      const processes = [];
+      for (const line of String(stdout || '').split('\n')) {
+        try {
+          if (line.trim()) processes.push(JSON.parse(line));
+        } catch {
+          // Linha incompleta: ignora.
+        }
+      }
+      lastProcesses = processes;
+      resolve(processes);
+    });
+  });
+}
 
 async function missingSources(known) {
   const seen = new Set(known.map((s) => s.id.split(':')[1]));
@@ -178,13 +224,33 @@ async function missingSources(known) {
     if (!current || score(w) > score(current)) best.set(w.pid, w);
   }
   windows.push(...best.values());
-  return Promise.all(
+  // Jogo rodando sem nenhuma janela na lista (o anticheat pode esconder até a janela): entra pelo
+  // processo. Um item por jogo; a versão "-Shipping" (o jogo de fato) tem preferência.
+  const shown = new Set([...listedPids, ...windows.map((w) => w.pid)]);
+  const byGame = new Map();
+  for (const p of await listProcesses()) {
+    const name = gameName(p.name);
+    if (!name || shown.has(p.pid) || own.has(p.pid)) continue;
+    const current = byGame.get(name);
+    if (!current || /shipping/i.test(p.name)) byGame.set(name, p);
+  }
+  const processSources = [...byGame].map(([name, p]) => ({
+    id: `game:${p.pid}`,
+    name,
+    type: 'window',
+    thumbnail: '',
+    icon: '',
+    minimized: false,
+    process: true,
+  }));
+  return [...(await Promise.all(
     windows.map(async (w) => {
       let icon = '';
       if (w.path) icon = (await app.getFileIcon(w.path, { size: 'small' }).catch(() => null))?.toDataURL() || '';
-      return { id: `window:${w.hwnd}:0`, name: w.title, type: 'window', thumbnail: '', icon, minimized: Boolean(w.minimized) };
+      const name = w.title || gameName(exeOf(w.path)) || exeOf(w.path).replace(/\.exe$/i, '') || 'Janela sem título';
+      return { id: `window:${w.hwnd}:0`, name, type: 'window', thumbnail: '', icon, minimized: Boolean(w.minimized) };
     }),
-  );
+  )), ...processSources];
 }
 
 // Texto para o "Não achou o jogo?" do seletor: o que o capturador nativo viu e por quê.
@@ -196,7 +262,8 @@ function captureDiagnostics() {
   return [
     `Nimbo ${app.getVersion()} · Windows ${require('os').release()}`,
     `Capturador: ${require('fs').existsSync(AUDIO_HELPER) ? 'encontrado' : 'NÃO ENCONTRADO'}${error ? ' · ERRO: ' + error : ''}`,
-    `Janelas com título: ${windows.length} (mostrando ${relevant.length})`,
+    `Jogos em execução: ${lastProcesses.filter((p) => gameName(p.name)).map((p) => `${p.name} (${p.pid})`).join(', ') || 'nenhum'}`,
+    `Janelas: ${windows.length} (mostrando ${relevant.length})`,
     ...relevant.map(
       (w) => `- ${w.title} | ${require('path').basename(w.path || '?')} | ${w.class} | ${flags(w)}${isGameLike(w) ? ' | JOGO' : ''}`,
     ),
@@ -306,6 +373,30 @@ function chooseCaptureSource() {
       if (!authorized(event)) throw new Error('Unauthorized');
       const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 0, height: 0 } });
       let source = sources.find((s) => s.id === id);
+      if (id.startsWith('game:')) {
+        const pid = Number(id.split(':')[1]);
+        const name = extraById.get(id)?.name || 'Jogo';
+        const score = (w) => (w.visible ? 4 : 0) + (w.owned ? 0 : 2) + (w.minimized ? 1 : 0);
+        const window = lastListing.windows.filter((w) => w.pid === pid).sort((a, b) => score(b) - score(a))[0];
+        let monitor = null;
+        if (window) {
+          if (window.minimized) await restoreWindow(window.hwnd);
+          monitor = await gameCapture(window.hwnd);
+        }
+        if (!monitor) {
+          const screens = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } });
+          monitor = screens.find((s) => s.display_id === String(screen.getPrimaryDisplay().id)) || screens[0];
+        }
+        if (!monitor) throw new Error('Nenhuma tela encontrada');
+        settle({
+          source: monitor,
+          label: name,
+          audioArgs: ['include', String(pid)],
+          game: window?.hwnd || null,
+          audio: Boolean(audio),
+        });
+        return true;
+      }
       const extra = extraById.get(id);
       if (!source && extra) {
         if (extra.minimized) {
@@ -391,7 +482,8 @@ handleApp('nimbo:audio:start', (event) => {
     });
     audioSessions.set(id, child);
   };
-  run(request.args, request.args[0] === 'window' ? ['exclude', String(process.pid)] : null);
+  const appOnly = request.args[0] === 'window' || request.args[0] === 'include';
+  run(request.args, appOnly ? ['exclude', String(process.pid)] : null);
   return { id, label: request.label };
 });
 
