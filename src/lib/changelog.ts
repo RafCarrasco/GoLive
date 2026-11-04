@@ -4,6 +4,15 @@ export type Release = { version: string; date: string; items: string[] };
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.3.6',
+    date: '04/11/2026',
+    items: [
+      'Jogos que o Windows esconde da lista (Valorant e outros com anticheat) agora entram em Aplicativos.',
+      'Novo "Não achou o jogo?" no seletor: mostra o que o Nimbo enxergou, com botão de copiar.',
+      'Na aba Telas, a dica para transmitir o monitor do jogo quando ele não aparece.',
+    ],
+  },
+  {
     version: '0.3.5',
     date: '04/11/2026',
     items: [

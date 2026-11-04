@@ -244,22 +244,39 @@ namespace Nimbo
             return 0;
         }
 
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr hwnd, StringBuilder name, int max);
+
+        // Todas as janelas de primeiro nível com título, com os motivos que normalmente as tirariam da
+        // lista (o Nimbo decide no JavaScript; jogos podem cair nesses filtros e entram mesmo assim).
         static int ListWindows()
         {
+            try { SetProcessDpiAwarenessContext(new IntPtr(-4)); } catch { }
             var output = new StringBuilder();
             EnumWindows((hwnd, _) =>
             {
-                if (!IsWindowVisible(hwnd)) return true;
-                if (GetWindow(hwnd, 4) != IntPtr.Zero) return true; // tem dono: diálogo, não app
-                if ((GetWindowLong(hwnd, -20) & 0x80) != 0) return true; // WS_EX_TOOLWINDOW
-                int cloaked;
-                if (DwmGetWindowAttribute(hwnd, 14, out cloaked, 4) == 0 && cloaked != 0) return true;
                 var title = new StringBuilder(512);
                 if (GetWindowText(hwnd, title, title.Capacity) == 0) return true;
+                var cls = new StringBuilder(256);
+                GetClassName(hwnd, cls, cls.Capacity);
+                int cloaked;
+                bool isCloaked = DwmGetWindowAttribute(hwnd, 14, out cloaked, 4) == 0 && cloaked != 0;
+                bool minimized = IsIconic(hwnd);
+                bool fullscreen = false;
+                Rect window;
+                var info = new MonitorInfo { cbSize = Marshal.SizeOf(typeof(MonitorInfo)) };
+                if (!minimized && GetWindowRect(hwnd, out window) && GetMonitorInfo(MonitorFromWindow(hwnd, 2), ref info))
+                    fullscreen = window.Left <= info.Monitor.Left && window.Top <= info.Monitor.Top &&
+                        window.Right >= info.Monitor.Right && window.Bottom >= info.Monitor.Bottom;
                 uint pid;
                 GetWindowThreadProcessId(hwnd, out pid);
                 output.Append("{\"hwnd\":\"").Append(hwnd.ToInt64()).Append("\",\"pid\":").Append(pid)
-                    .Append(",\"minimized\":").Append(IsIconic(hwnd) ? "true" : "false")
+                    .Append(",\"visible\":").Append(IsWindowVisible(hwnd) ? "true" : "false")
+                    .Append(",\"owned\":").Append(GetWindow(hwnd, 4) != IntPtr.Zero ? "true" : "false")
+                    .Append(",\"tool\":").Append((GetWindowLong(hwnd, -20) & 0x80) != 0 ? "true" : "false")
+                    .Append(",\"cloaked\":").Append(isCloaked ? "true" : "false")
+                    .Append(",\"minimized\":").Append(minimized ? "true" : "false")
+                    .Append(",\"fullscreen\":").Append(fullscreen ? "true" : "false")
+                    .Append(",\"class\":").Append(Json(cls.ToString()))
                     .Append(",\"title\":").Append(Json(title.ToString()))
                     .Append(",\"path\":").Append(Json(ProcessPath(pid))).Append("}\n");
                 return true;
@@ -277,6 +294,8 @@ namespace Nimbo
         [MTAThread]
         static int Main(string[] args)
         {
+            // Títulos de janela em UTF-8 (acentos e símbolos chegam certos ao Nimbo).
+            Console.OutputEncoding = new UTF8Encoding(false);
             if (args.Length == 1 && args[0] == "list") return ListWindows();
             if (args.Length == 2 && args[0] == "watch")
             {

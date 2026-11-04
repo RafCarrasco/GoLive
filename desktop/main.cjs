@@ -129,27 +129,55 @@ handleApp('nimbo:capture:audio', (_event, wanted) => {
 // você troca para o Nimbo) e pode omitir janelas de jogos protegidos por anticheat (Valorant).
 // O capturador nativo lista todas as janelas de aplicativo; as que faltarem entram no seletor, e
 // uma minimizada volta à tela ao ser escolhida.
+let lastListing = { windows: [], error: '' };
+
 function listWindows() {
   return new Promise((resolve) => {
-    execFile(AUDIO_HELPER, ['list'], { timeout: 2000, windowsHide: true }, (error, stdout) => {
-      if (error) return resolve([]);
+    execFile(AUDIO_HELPER, ['list'], { timeout: 3000, windowsHide: true }, (error, stdout, stderr) => {
       const windows = [];
-      for (const line of stdout.split('\n')) {
+      for (const line of String(stdout || '').split('\n')) {
         try {
           if (line.trim()) windows.push(JSON.parse(line));
         } catch {
           // Linha incompleta: ignora.
         }
       }
+      lastListing = { windows, error: error ? `${error.code || ''} ${error.message} ${stderr || ''}`.trim() : '' };
       resolve(windows);
     });
   });
 }
 
+// Executáveis de jogos conhecidos; janelas deles entram no seletor mesmo que caiam nos filtros.
+const GAME_EXE =
+  /\\(valorant(-win64-shipping)?|cs2|csgo|league of legends|fortniteclient-win64-shipping|r5apex(_dx12)?|gta5|gtav|rocketleague|overwatch|dota2|eldenring|javaw|robloxplayerbeta|cod|tslgame|destiny2|rainbowsix|marvel-win64-shipping|deadlock|project8)\.exe$/i;
+// Tela cheia só conta se a janela estiver de fato visível (o Windows tem janelas de sistema escondidas
+// do tamanho da tela); executável conhecido e janela da Unreal Engine valem sempre.
+const isGameLike = (w) =>
+  GAME_EXE.test(w.path || '') ||
+  /UnrealWindow/i.test(w.class || '') ||
+  (w.fullscreen && w.visible && !w.cloaked && !w.tool);
+// Filtros de sempre: janela visível, sem dono, que não é auxiliar nem está escondida pelo Windows.
+const isAppWindow = (w) => w.visible && !w.owned && !w.tool && !w.cloaked;
+
 async function missingSources(known) {
   const seen = new Set(known.map((s) => s.id.split(':')[1]));
   const own = new Set(app.getAppMetrics().map((m) => m.pid));
-  const windows = (await listWindows()).filter((w) => !seen.has(w.hwnd) && !own.has(w.pid));
+  const listing = await listWindows();
+  const all = listing.filter((w) => !seen.has(w.hwnd) && !own.has(w.pid));
+  const windows = all.filter(isAppWindow);
+  // Um jogo pode ficar escondido ou "auxiliar" para o Windows. Entra a janela principal de cada
+  // processo de jogo que ainda não estiver na lista (as de teclado/IME do jogo ficam de fora).
+  const listed = new Set([...known.map((s) => s.id.split(':')[1]), ...windows.map((w) => w.hwnd)]);
+  const listedPids = new Set([...windows, ...listing.filter((w) => seen.has(w.hwnd))].map((w) => w.pid));
+  const score = (w) => (w.visible ? 4 : 0) + (w.owned ? 0 : 2) + (w.tool ? 0 : 1) + (w.minimized ? 1 : 0);
+  const best = new Map();
+  for (const w of all) {
+    if (listed.has(w.hwnd) || listedPids.has(w.pid) || !isGameLike(w) || /^(IME|MSCTFIME UI)$/.test(w.class || '')) continue;
+    const current = best.get(w.pid);
+    if (!current || score(w) > score(current)) best.set(w.pid, w);
+  }
+  windows.push(...best.values());
   return Promise.all(
     windows.map(async (w) => {
       let icon = '';
@@ -157,6 +185,22 @@ async function missingSources(known) {
       return { id: `window:${w.hwnd}:0`, name: w.title, type: 'window', thumbnail: '', icon, minimized: Boolean(w.minimized) };
     }),
   );
+}
+
+// Texto para o "Não achou o jogo?" do seletor: o que o capturador nativo viu e por quê.
+function captureDiagnostics() {
+  const { windows, error } = lastListing;
+  const flags = (w) =>
+    ['visible', 'owned', 'tool', 'cloaked', 'minimized', 'fullscreen'].filter((k) => w[k]).join(',') || '-';
+  const relevant = windows.filter((w) => w.visible || isGameLike(w) || w.minimized);
+  return [
+    `Nimbo ${app.getVersion()} · Windows ${require('os').release()}`,
+    `Capturador: ${require('fs').existsSync(AUDIO_HELPER) ? 'encontrado' : 'NÃO ENCONTRADO'}${error ? ' · ERRO: ' + error : ''}`,
+    `Janelas com título: ${windows.length} (mostrando ${relevant.length})`,
+    ...relevant.map(
+      (w) => `- ${w.title} | ${require('path').basename(w.path || '?')} | ${w.class} | ${flags(w)}${isGameLike(w) ? ' | JOGO' : ''}`,
+    ),
+  ].join('\n');
 }
 
 function windowInfo(hwnd) {
@@ -205,7 +249,7 @@ function restoreWindow(hwnd) {
 function chooseCaptureSource() {
   return new Promise((resolve) => {
     let settled = false;
-    const channels = ['nimbo:picker:list', 'nimbo:picker:choose', 'nimbo:picker:cancel'];
+    const channels = ['nimbo:picker:list', 'nimbo:picker:choose', 'nimbo:picker:cancel', 'nimbo:picker:diagnostics'];
     const picker = new BrowserWindow({
       parent: mainWindow,
       modal: true,
@@ -281,6 +325,10 @@ function chooseCaptureSource() {
       }
       settle({ source, audio: Boolean(audio) });
       return true;
+    });
+    ipcMain.handle('nimbo:picker:diagnostics', async (event) => {
+      if (!authorized(event)) throw new Error('Unauthorized');
+      return captureDiagnostics();
     });
     ipcMain.handle('nimbo:picker:cancel', async (event) => {
       if (!authorized(event)) throw new Error('Unauthorized');

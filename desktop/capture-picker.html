@@ -36,6 +36,14 @@
   .empty { grid-column: 1 / -1; color: #8f9bbb; text-align: center; padding: 60px 0; font-size: 14px; }
   .hint { color: #7f8aab; font-size: 12px; margin: 12px 0 0; }
   .hint strong { color: #b9c1dc; font-weight: 600; }
+  .hint a { color: #a99bff; }
+  .diag { position: fixed; inset: 0; background: rgba(5, 8, 15, 0.85); display: none; place-items: center; padding: 24px; }
+  .diag.open { display: grid; }
+  .diag-box { width: min(720px, 100%); background: #121a2f; border: 1px solid #2a3456; border-radius: 14px; padding: 18px;
+    display: flex; flex-direction: column; gap: 10px; }
+  .diag-box p { color: #a9b3cf; font-size: 13px; margin: 0; }
+  .diag-box textarea { height: 300px; resize: none; background: #070b16; color: #cdd4ea; border: 1px solid #222c49;
+    border-radius: 8px; padding: 10px; font: 12px Consolas, monospace; }
   footer { border-top: 1px solid #1c2440; margin-top: 14px; padding-top: 16px; display: flex; align-items: center;
     justify-content: space-between; gap: 16px; }
   label { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; cursor: pointer; }
@@ -60,6 +68,17 @@
 </header>
 <div id="grid" class="grid"></div>
 <p id="hint" class="hint"></p>
+<div id="diag" class="diag">
+  <div class="diag-box">
+    <h1>Diagnóstico da captura</h1>
+    <p>Mostra o que o Nimbo conseguiu ver das janelas abertas. Copie e mande para quem cuida do Nimbo: ajuda a descobrir por que o jogo não apareceu. Tem os títulos das janelas abertas; não tem nada além disso.</p>
+    <textarea id="diag-text" readonly></textarea>
+    <div class="buttons">
+      <button id="diag-close">Fechar</button>
+      <button id="diag-copy" class="primary">Copiar</button>
+    </div>
+  </div>
+</div>
 <footer>
   <label><input id="audio" type="checkbox"><span id="audio-text"></span></label>
   <div class="buttons">
@@ -86,12 +105,16 @@
     if (filter === 'screen') {
       title.textContent = 'Transmitir o som do computador';
       detail.textContent = 'O som das lives que você assiste no Nimbo fica de fora, sem eco.';
-      hint.textContent = '';
+      hint.textContent = 'Jogo não aparece em Aplicativos? Escolha aqui a tela onde ele está rodando.';
     } else {
       title.textContent = 'Transmitir só o som deste aplicativo';
       detail.textContent = 'Discord, música e o Nimbo não entram na live.';
       hint.innerHTML =
-        '<strong>Jogo em tela cheia:</strong> escolha o jogo aqui. O Nimbo transmite o monitor dele, sem perder FPS, com o som só do jogo. Se o jogo estiver minimizado, ele volta para a tela.';
+        '<strong>Jogo em tela cheia:</strong> escolha o jogo aqui. O Nimbo transmite o monitor dele, sem perder FPS, com o som só do jogo. Se o jogo estiver minimizado, ele volta para a tela. <a href="#" id="diag-link">Não achou o jogo?</a>';
+      document.getElementById('diag-link').onclick = (e) => {
+        e.preventDefault();
+        showDiagnostics();
+      };
     }
     audioText.append(title, detail);
   }
@@ -187,10 +210,33 @@
       render();
     };
   });
+  async function showDiagnostics() {
+    const box = document.getElementById('diag');
+    const text = document.getElementById('diag-text');
+    text.value = 'Carregando…';
+    box.classList.add('open');
+    try {
+      await refresh(false);
+      text.value = await window.capturePicker.diagnostics();
+    } catch (e) {
+      text.value = 'Falha ao gerar o diagnóstico: ' + (e && e.message);
+    }
+  }
+  document.getElementById('diag-close').onclick = () => document.getElementById('diag').classList.remove('open');
+  document.getElementById('diag-copy').onclick = (e) => {
+    const text = document.getElementById('diag-text');
+    text.select();
+    document.execCommand('copy');
+    e.target.textContent = 'Copiado';
+  };
   document.getElementById('cancel').onclick = () => window.capturePicker.cancel();
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') window.capturePicker.cancel();
-    if (e.key === 'Enter') choose();
+    if (e.key === 'Escape') {
+      const box = document.getElementById('diag');
+      if (box.classList.contains('open')) box.classList.remove('open');
+      else window.capturePicker.cancel();
+    }
+    if (e.key === 'Enter' && !document.getElementById('diag').classList.contains('open')) choose();
   });
   start.onclick = choose;
   describe();
