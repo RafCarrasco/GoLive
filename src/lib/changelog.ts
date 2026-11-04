@@ -4,6 +4,15 @@ export type Release = { version: string; date: string; items: string[] };
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.3.5',
+    date: '04/11/2026',
+    items: [
+      'Jogos com anticheat (Valorant, por exemplo) aparecem no seletor, mesmo em tela cheia ou minimizados.',
+      'Se o Windows não deixar pegar só o som do jogo, a live usa o som do PC (sem o Nimbo) em vez de ficar muda.',
+      'Rodapé mais limpo, só com a versão do Nimbo.',
+    ],
+  },
+  {
     version: '0.3.4',
     date: '02/11/2026',
     items: [

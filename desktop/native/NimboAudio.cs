@@ -4,8 +4,10 @@
 //
 //   nimbo-audio.exe exclude <pid>   tudo menos o processo e seus filhos (o próprio Nimbo)
 //   nimbo-audio.exe window <hwnd>   só o aplicativo dono da janela (e seus filhos)
-//   nimbo-audio.exe list            janelas minimizadas, uma por linha em JSON (jogos em tela cheia
-//                                   se minimizam ao perder o foco e somem da lista do Chromium)
+//   nimbo-audio.exe list            janelas de aplicativo abertas, uma por linha em JSON, inclusive
+//                                   minimizadas e protegidas (jogos em tela cheia se minimizam ao
+//                                   perder o foco, e jogos com anticheat podem sumir da lista do
+//                                   Chromium)
 //   nimbo-audio.exe restore <hwnd>  traz a janela de volta (o jogo volta à tela ao ser escolhido)
 //   nimbo-audio.exe info <hwnd>     retângulo da janela e do monitor dela, e se cobre o monitor
 //   nimbo-audio.exe watch <hwnd>    escreve 1 quando o jogo está na frente e 0 quando sai (Alt+Tab,
@@ -242,12 +244,12 @@ namespace Nimbo
             return 0;
         }
 
-        static int ListMinimized()
+        static int ListWindows()
         {
             var output = new StringBuilder();
             EnumWindows((hwnd, _) =>
             {
-                if (!IsWindowVisible(hwnd) || !IsIconic(hwnd)) return true;
+                if (!IsWindowVisible(hwnd)) return true;
                 if (GetWindow(hwnd, 4) != IntPtr.Zero) return true; // tem dono: diálogo, não app
                 if ((GetWindowLong(hwnd, -20) & 0x80) != 0) return true; // WS_EX_TOOLWINDOW
                 int cloaked;
@@ -257,6 +259,7 @@ namespace Nimbo
                 uint pid;
                 GetWindowThreadProcessId(hwnd, out pid);
                 output.Append("{\"hwnd\":\"").Append(hwnd.ToInt64()).Append("\",\"pid\":").Append(pid)
+                    .Append(",\"minimized\":").Append(IsIconic(hwnd) ? "true" : "false")
                     .Append(",\"title\":").Append(Json(title.ToString()))
                     .Append(",\"path\":").Append(Json(ProcessPath(pid))).Append("}\n");
                 return true;
@@ -274,7 +277,7 @@ namespace Nimbo
         [MTAThread]
         static int Main(string[] args)
         {
-            if (args.Length == 1 && args[0] == "list") return ListMinimized();
+            if (args.Length == 1 && args[0] == "list") return ListWindows();
             if (args.Length == 2 && args[0] == "watch")
             {
                 long watched;

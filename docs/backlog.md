@@ -39,7 +39,7 @@ reinicia e instala a versão baixada (`desktop.installUpdate`); no site, recarre
   depois de a pessoa fechar o cartão com "Depois".
 - Entra no próximo Release do app (precisa de `nimboDesktop.watchUpdate`, presente a partir do 0.3.2).
 
-### Rodapé só com "Nimbo 0.3.4" (pedido em 02/11/2026, para a próxima análise)
+### ~~Rodapé só com "Nimbo 0.3.4"~~ (feito na 0.3.5, 04/11/2026)
 Tirar o "· app 0.3.4" do rodapé da barra lateral (`src/components/UserPanel.tsx`, `.version-line`):
 fica só "Nimbo <versão>". A versão do app continua no título da janela.
 

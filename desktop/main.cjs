@@ -125,9 +125,11 @@ handleApp('nimbo:capture:audio', (_event, wanted) => {
   audioWanted = Boolean(wanted);
 });
 
-// Jogos em tela cheia se minimizam quando você troca para o Nimbo, e o Chromium não lista janelas
-// minimizadas. O capturador nativo lista essas janelas; ao escolher uma, ela volta à tela.
-function listMinimized() {
+// A lista do Chromium deixa de fora janelas minimizadas (jogos em tela cheia se minimizam quando
+// você troca para o Nimbo) e pode omitir janelas de jogos protegidos por anticheat (Valorant).
+// O capturador nativo lista todas as janelas de aplicativo; as que faltarem entram no seletor, e
+// uma minimizada volta à tela ao ser escolhida.
+function listWindows() {
   return new Promise((resolve) => {
     execFile(AUDIO_HELPER, ['list'], { timeout: 2000, windowsHide: true }, (error, stdout) => {
       if (error) return resolve([]);
@@ -144,15 +146,15 @@ function listMinimized() {
   });
 }
 
-async function minimizedSources(known) {
+async function missingSources(known) {
   const seen = new Set(known.map((s) => s.id.split(':')[1]));
   const own = new Set(app.getAppMetrics().map((m) => m.pid));
-  const windows = (await listMinimized()).filter((w) => !seen.has(w.hwnd) && !own.has(w.pid));
+  const windows = (await listWindows()).filter((w) => !seen.has(w.hwnd) && !own.has(w.pid));
   return Promise.all(
     windows.map(async (w) => {
       let icon = '';
       if (w.path) icon = (await app.getFileIcon(w.path, { size: 'small' }).catch(() => null))?.toDataURL() || '';
-      return { id: `window:${w.hwnd}:0`, name: w.title, type: 'window', thumbnail: '', icon, minimized: true };
+      return { id: `window:${w.hwnd}:0`, name: w.title, type: 'window', thumbnail: '', icon, minimized: Boolean(w.minimized) };
     }),
   );
 }
@@ -231,7 +233,7 @@ function chooseCaptureSource() {
       resolve(result);
     };
     const authorized = (event) => event.sender === picker.webContents;
-    const minimizedById = new Map();
+    const extraById = new Map();
     const ownWindows = () =>
       BrowserWindow.getAllWindows().map((w) => w.getMediaSourceId());
     picker.on('closed', () => settle(null));
@@ -252,19 +254,21 @@ function chooseCaptureSource() {
           thumbnail: s.thumbnail.isEmpty() ? '' : s.thumbnail.toDataURL(),
           icon: s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : '',
         }));
-      const minimized = await minimizedSources(sources);
-      for (const m of minimized) minimizedById.set(m.id, m);
-      return { audio: audioWanted, sources: [...visible, ...minimized] };
+      const extra = await missingSources(sources);
+      for (const m of extra) extraById.set(m.id, m);
+      return { audio: audioWanted, sources: [...visible, ...extra] };
     });
     ipcMain.handle('nimbo:picker:choose', async (event, { id, audio }) => {
       if (!authorized(event)) throw new Error('Unauthorized');
       const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 0, height: 0 } });
       let source = sources.find((s) => s.id === id);
-      const minimized = minimizedById.get(id);
-      if (!source && minimized) {
-        await restoreWindow(id.split(':')[1]);
-        await new Promise((r) => setTimeout(r, 700));
-        source = { id, name: minimized.name };
+      const extra = extraById.get(id);
+      if (!source && extra) {
+        if (extra.minimized) {
+          await restoreWindow(id.split(':')[1]);
+          await new Promise((r) => setTimeout(r, 700));
+        }
+        source = { id, name: extra.name };
       }
       if (!source) throw new Error('Fonte não encontrada');
       if (id.startsWith('window:')) {
@@ -305,29 +309,41 @@ handleApp('nimbo:audio:start', (event) => {
   pendingAudio = null;
   if (!request) return null;
   const id = crypto.randomUUID();
-  const child = spawn(AUDIO_HELPER, request.args, { windowsHide: true });
   const target = event.sender;
-  let carry = Buffer.alloc(0);
-  let errors = '';
-  // Envia só blocos inteiros (4 bytes por amostra estéreo).
-  child.stdout.on('data', (data) => {
-    const all = carry.length ? Buffer.concat([carry, data]) : data;
-    const usable = all.length - (all.length % 4);
-    carry = all.subarray(usable);
-    if (usable && !target.isDestroyed()) target.send('nimbo:audio:data', id, all.subarray(0, usable));
-  });
-  child.stderr.on('data', (data) => (errors += data));
-  const finish = (error) => {
-    if (!audioSessions.has(id)) return;
-    audioSessions.delete(id);
-    if (!target.isDestroyed()) target.send('nimbo:audio:end', id, error);
+  // Se o Windows recusar o som só daquele aplicativo (jogo protegido por anticheat, por exemplo),
+  // a sessão continua com o som do PC sem o Nimbo, em vez de ficar muda.
+  const run = (args, fallback) => {
+    const child = spawn(AUDIO_HELPER, args, { windowsHide: true });
+    let carry = Buffer.alloc(0);
+    let errors = '';
+    let received = false;
+    // Envia só blocos inteiros (4 bytes por amostra estéreo).
+    child.stdout.on('data', (data) => {
+      received = true;
+      const all = carry.length ? Buffer.concat([carry, data]) : data;
+      const usable = all.length - (all.length % 4);
+      carry = all.subarray(usable);
+      if (usable && !target.isDestroyed()) target.send('nimbo:audio:data', id, all.subarray(0, usable));
+    });
+    child.stderr.on('data', (data) => (errors += data));
+    const finish = (error) => {
+      if (audioSessions.get(id) !== child) return;
+      if (error && fallback && !received) {
+        console.warn('[nimbo] som só do aplicativo recusado, usando o som do PC:', error);
+        run(fallback, null);
+        return;
+      }
+      audioSessions.delete(id);
+      if (!target.isDestroyed()) target.send('nimbo:audio:end', id, error);
+    };
+    child.on('error', (e) => finish('Capturador de áudio indisponível: ' + e.message));
+    child.on('exit', (code) => {
+      const message = (errors.match(/ERROR (.*)/) || [])[1];
+      finish(code ? message || `código ${code}` : '');
+    });
+    audioSessions.set(id, child);
   };
-  child.on('error', (e) => finish('Capturador de áudio indisponível: ' + e.message));
-  child.on('exit', (code) => {
-    const message = (errors.match(/ERROR (.*)/) || [])[1];
-    finish(code ? message || `código ${code}` : '');
-  });
-  audioSessions.set(id, child);
+  run(request.args, request.args[0] === 'window' ? ['exclude', String(process.pid)] : null);
   return { id, label: request.label };
 });
 

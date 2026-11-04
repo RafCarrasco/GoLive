@@ -107,7 +107,12 @@
       image.src = src.thumbnail;
       image.alt = '';
       thumb.append(image);
-    } else thumb.textContent = src.minimized ? 'Minimizado: volta à tela ao transmitir' : 'Sem prévia';
+    } else
+      thumb.textContent = src.minimized
+        ? 'Minimizado: volta à tela ao transmitir'
+        : src.id.startsWith('window:')
+          ? 'Sem prévia: a imagem aparece na live'
+          : 'Sem prévia';
     const name = document.createElement('div');
     name.className = 'name';
     if (src.icon) {
