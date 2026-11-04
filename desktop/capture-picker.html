@@ -36,7 +36,10 @@
   .empty { grid-column: 1 / -1; color: #8f9bbb; text-align: center; padding: 60px 0; font-size: 14px; }
   .hint { color: #7f8aab; font-size: 12px; margin: 12px 0 0; }
   .hint strong { color: #b9c1dc; font-weight: 600; }
-  .hint a { color: #a99bff; }
+  .head-actions { display: flex; align-items: center; gap: 10px; flex: none; }
+  .help { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 9px;
+    border: 1px solid #2a3456; background: #141b31; color: #c9c2ff; font-size: 13px; font-weight: 600; }
+  .help:hover { border-color: #8f83f5; background: #1c1d45; }
   .diag { position: fixed; inset: 0; background: rgba(5, 8, 15, 0.85); display: none; place-items: center; padding: 24px; }
   .diag.open { display: grid; }
   .diag-box { width: min(720px, 100%); background: #121a2f; border: 1px solid #2a3456; border-radius: 14px; padding: 18px;
@@ -61,9 +64,15 @@
     <h1>Escolha o que transmitir</h1>
     <p>Uma tela inteira ou a janela de um aplicativo.</p>
   </div>
-  <div class="tabs">
-    <button data-filter="screen" class="active">Telas</button>
-    <button data-filter="window">Aplicativos</button>
+  <div class="head-actions">
+    <button id="diag-open" class="help" title="Mostra o que o Nimbo enxergou das janelas abertas">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      Não achou o jogo?
+    </button>
+    <div class="tabs">
+      <button data-filter="screen" class="active">Telas</button>
+      <button data-filter="window">Aplicativos</button>
+    </div>
   </div>
 </header>
 <div id="grid" class="grid"></div>
@@ -110,11 +119,7 @@
       title.textContent = 'Transmitir só o som deste aplicativo';
       detail.textContent = 'Discord, música e o Nimbo não entram na live.';
       hint.innerHTML =
-        '<strong>Jogo em tela cheia:</strong> escolha o jogo aqui. O Nimbo transmite o monitor dele, sem perder FPS, com o som só do jogo. Se o jogo estiver minimizado, ele volta para a tela. <a href="#" id="diag-link">Não achou o jogo?</a>';
-      document.getElementById('diag-link').onclick = (e) => {
-        e.preventDefault();
-        showDiagnostics();
-      };
+        '<strong>Jogo em tela cheia:</strong> escolha o jogo aqui. O Nimbo transmite o monitor dele, sem perder FPS, com o som só do jogo. Se o jogo estiver minimizado, ele volta para a tela.';
     }
     audioText.append(title, detail);
   }
@@ -222,6 +227,7 @@
       text.value = 'Falha ao gerar o diagnóstico: ' + (e && e.message);
     }
   }
+  document.getElementById('diag-open').onclick = () => showDiagnostics();
   document.getElementById('diag-close').onclick = () => document.getElementById('diag').classList.remove('open');
   document.getElementById('diag-copy').onclick = (e) => {
     const text = document.getElementById('diag-text');

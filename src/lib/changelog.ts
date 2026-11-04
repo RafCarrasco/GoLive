@@ -4,6 +4,11 @@ export type Release = { version: string; date: string; items: string[] };
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.3.7',
+    date: '04/11/2026',
+    items: ['Botão "Não achou o jogo?" no topo do seletor, nas duas abas, para ver o diagnóstico da captura.'],
+  },
+  {
     version: '0.3.6',
     date: '04/11/2026',
     items: [
