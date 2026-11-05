@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Download, RotateCw, Sparkles, X } from 'lucide-react';
 import { desktop } from '../desktop';
-import { SITE_VERSION, siteUpdateAvailable } from '../lib/version';
+import { APP_VERSION, SITE_VERSION, siteUpdateAvailable } from '../lib/version';
 import { CHANGELOG, newer } from '../lib/changelog';
 import { useEmulators } from '../firebase';
 import { Modal } from '../ui/Modal';
@@ -32,6 +32,9 @@ export function UpdateBanner({ live }: { live: boolean }) {
   const [site, setSite] = useState(false);
   const [cardClosed, setCardClosed] = useState(false);
   const [busy, setBusy] = useState(false);
+  // App instalado mais velho que o site e sem atualização chegando: o portátil e os apps antigos
+  // não se atualizam sozinhos, então o jeito é baixar o instalador de novo.
+  const [outdated, setOutdated] = useState('');
   const [notes, setNotes] = useState(() => {
     let seen = readSeen();
     if (!seen) {
@@ -58,10 +61,25 @@ export function UpdateBanner({ live }: { live: boolean }) {
     if (fake === 'app') setAppVersion('9.9.9');
     if (fake === 'site') setSite(true);
     if (fake === 'notes') setNotes(CHANGELOG.slice(0, 2));
+    if (fake === 'outdated') setOutdated('0.2.0');
     if (!desktop?.watchUpdate) return;
     void desktop.watchUpdate((info) => setAppVersion(info.version)).then((r) => {
       if (r.ok && r.value) setAppVersion(r.value.version);
     });
+  }, []);
+
+  useEffect(() => {
+    const inApp = /Electron/i.test(navigator.userAgent);
+    if (!inApp || (APP_VERSION && !newer(SITE_VERSION, APP_VERSION))) return;
+    const version = APP_VERSION || 'antiga';
+    // Antes da 0.3.0 (ou sem versão no app) não há atualização automática: avisa na hora. Nas
+    // outras, espera um minuto para dar tempo de a atualização automática baixar.
+    if (!APP_VERSION || newer('0.3.0', APP_VERSION)) {
+      setOutdated(version);
+      return;
+    }
+    const timer = setTimeout(() => setOutdated(version), 60000);
+    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -93,6 +111,32 @@ export function UpdateBanner({ live }: { live: boolean }) {
 
   return (
     <>
+      {outdated && !isApp && (
+        <div className="update-card" role="alert">
+          <img src="/nimbo-icon-128.png" alt="" />
+          <div className="update-text">
+            <strong>Seu app do Nimbo está desatualizado</strong>
+            <span>
+              Você está com a versão {outdated} e a atual é a {SITE_VERSION}.{' '}
+              {APP_VERSION && !newer('0.3.0', APP_VERSION)
+                ? 'A atualização automática não chegou: feche e abra o Nimbo. Se continuar, baixe o instalador novo.'
+                : 'Esta versão não se atualiza sozinha: baixe o instalador novo e abra. Seu login continua salvo.'}
+            </span>
+            <div className="update-actions">
+              <button
+                className="button primary small"
+                onClick={() => window.open('https://golive-ad118.web.app/baixar/', '_blank')}
+              >
+                <Download size={15} />
+                Baixar app novo
+              </button>
+              <button className="button ghost small" onClick={() => setOutdated('')}>
+                Depois
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {(isApp || site) && cardClosed && (
         <button
           className="update-pill"
