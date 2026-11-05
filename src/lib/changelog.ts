@@ -4,6 +4,16 @@ export type Release = { version: string; date: string; items: string[] };
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.3.8',
+    date: '04/11/2026',
+    items: [
+      'Atualizar ficou de verdade: o selo mostra o download, o clique abre a tela "Atualizando o Nimbo", o app instala sem janela e reabre sozinho.',
+      'Depois de atualizar, o Nimbo abre direto com as novidades da versão nova.',
+      'Se a instalação não der certo, o app avisa e oferece o instalador, em vez de pedir para atualizar de novo.',
+      'App antigo (que não se atualiza sozinho) recebe um aviso para baixar o novo.',
+    ],
+  },
+  {
     version: '0.3.7',
     date: '04/11/2026',
     items: [

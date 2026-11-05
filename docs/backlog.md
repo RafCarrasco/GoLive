@@ -43,7 +43,7 @@ reinicia e instala a versão baixada (`desktop.installUpdate`); no site, recarre
 Tirar o "· app 0.3.4" do rodapé da barra lateral (`src/components/UserPanel.tsx`, `.version-line`):
 fica só "Nimbo <versão>". A versão do app continua no título da janela.
 
-### Novidades sincronizadas com a atualização (pedido em 02/11/2026, para a próxima análise)
+### ~~Novidades sincronizadas com a atualização~~ (feito na 0.3.8, 04/11/2026)
 Hoje a janela de novidades aparece quando o site carregado tem versão maior que a última vista
 (`nimbo.seenVersion`), independente de a pessoa ter clicado em atualizar. O fluxo desejado é:
 clicou em atualizar → o app (ou o site) reinicia → abre já mostrando as novidades da versão
@@ -72,7 +72,7 @@ Restrições: sem Firebase Storage para fotos (combinado no handoff) e custo zer
 Hoje a instalação e cada atualização mostram a janelinha padrão do NSIS ("Nimbo Setup ·
 Installing, please wait..."), em inglês e cinza.
 
-- **Atualização sem janela:** chamar `autoUpdater.quitAndInstall(true, true)` (instalação silenciosa
+- **Feito na 0.3.8 — atualização sem janela:** chamar `autoUpdater.quitAndInstall(true, true)` (instalação silenciosa
   e reabre o app sozinho). Quem atualiza pelo selo/cartão não vê mais o instalador. É o ganho maior.
 - **Primeira instalação:** o instalador de um clique do NSIS quase não deixa mudar o visual. Dá para
   pôr em português (`nsis.installerLanguages: ['pt_BR']`, "Instalando, aguarde...") e trocar ícone e

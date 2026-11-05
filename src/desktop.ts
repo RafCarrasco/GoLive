@@ -12,6 +12,8 @@ type DesktopBridge = {
   // A partir do app 0.3.2: aviso de atualização baixada, mostrado pelo site.
   watchUpdate?(onReady: (info: { version: string }) => void): Promise<Result<{ version: string } | null>>;
   installUpdate?(): Promise<void>;
+  // A partir do app 0.3.8: progresso do download da atualização (0 a 100).
+  onUpdateProgress?(onProgress: (percent: number) => void): () => void;
   // A partir do app 0.3.4: avisa quando o jogo transmitido sai ou volta para a frente.
   startGameWatch?(): Promise<Result<{ id: string; label: string } | null>>;
   stopGameWatch?(id: string): Promise<void>;

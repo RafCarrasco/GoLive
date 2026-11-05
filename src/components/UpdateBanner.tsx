@@ -8,6 +8,33 @@ import { Modal } from '../ui/Modal';
 
 const CHECK_EVERY = 5 * 60 * 1000;
 const SEEN_KEY = 'nimbo.seenVersion';
+// Gravado ao clicar em atualizar o app: de qual versão para qual. Ao reabrir, mostra as novidades
+// da versão nova ou, se o app voltou na mesma versão, avisa que a instalação falhou.
+const PENDING_KEY = 'nimbo.pendingUpdate';
+type Pending = { from: string; to: string; at: number };
+const readPending = (): Pending | null => {
+  try {
+    const raw = localStorage.getItem(PENDING_KEY);
+    localStorage.removeItem(PENDING_KEY);
+    return raw ? (JSON.parse(raw) as Pending) : null;
+  } catch {
+    return null;
+  }
+};
+const writePending = (p: Pending) => {
+  try {
+    localStorage.setItem(PENDING_KEY, JSON.stringify(p));
+  } catch {
+    // Sem armazenamento: segue sem as novidades ao reabrir.
+  }
+};
+// Lido uma vez por carregamento da página.
+const PENDING = readPending();
+const pendingResult = () => {
+  if (!PENDING || !APP_VERSION || Date.now() - PENDING.at > 30 * 60 * 1000) return null;
+  if (APP_VERSION === PENDING.from) return 'failed' as const;
+  return 'installed' as const;
+};
 
 const readSeen = () => {
   try {
@@ -34,8 +61,15 @@ export function UpdateBanner({ live }: { live: boolean }) {
   const [busy, setBusy] = useState(false);
   // App instalado mais velho que o site e sem atualização chegando: o portátil e os apps antigos
   // não se atualizam sozinhos, então o jeito é baixar o instalador de novo.
-  const [outdated, setOutdated] = useState('');
+  const [outdated, setOutdated] = useState(() => (pendingResult() === 'failed' ? APP_VERSION : ''));
+  const [failed] = useState(() => pendingResult() === 'failed');
+  const [progress, setProgress] = useState(0);
+  const [updating, setUpdating] = useState('');
   const [notes, setNotes] = useState(() => {
+    if (pendingResult() === 'installed' && PENDING) {
+      writeSeen(SITE_VERSION);
+      return CHANGELOG.filter((r) => newer(r.version, PENDING.from) && !newer(r.version, APP_VERSION));
+    }
     let seen = readSeen();
     if (!seen) {
       // Quem já usava o Nimbo antes desta janela existir (0.3.3) vê as novidades desta versão;
@@ -62,15 +96,18 @@ export function UpdateBanner({ live }: { live: boolean }) {
     if (fake === 'site') setSite(true);
     if (fake === 'notes') setNotes(CHANGELOG.slice(0, 2));
     if (fake === 'outdated') setOutdated('0.2.0');
-    if (!desktop?.watchUpdate) return;
+    if (fake === 'progress') setProgress(45);
+    const offProgress = desktop?.onUpdateProgress?.(setProgress);
+    if (!desktop?.watchUpdate) return offProgress;
     void desktop.watchUpdate((info) => setAppVersion(info.version)).then((r) => {
       if (r.ok && r.value) setAppVersion(r.value.version);
     });
+    return offProgress;
   }, []);
 
   useEffect(() => {
     const inApp = /Electron/i.test(navigator.userAgent);
-    if (!inApp || (APP_VERSION && !newer(SITE_VERSION, APP_VERSION))) return;
+    if (!inApp || failed || (APP_VERSION && !newer(SITE_VERSION, APP_VERSION))) return;
     const version = APP_VERSION || 'antiga';
     // Antes da 0.3.0 (ou sem versão no app) não há atualização automática: avisa na hora. Nas
     // outras, espera um minuto para dar tempo de a atualização automática baixar.
@@ -105,17 +142,39 @@ export function UpdateBanner({ live }: { live: boolean }) {
   const isApp = Boolean(appVersion);
   const update = () => {
     setBusy(true);
-    if (isApp) void desktop?.installUpdate?.();
-    else location.reload();
+    if (!isApp) {
+      location.reload();
+      return;
+    }
+    writePending({ from: APP_VERSION, to: appVersion, at: Date.now() });
+    setUpdating(appVersion);
+    // Um instante para a tela "Atualizando" aparecer antes de o app fechar.
+    setTimeout(() => void desktop?.installUpdate?.(), 700);
   };
 
   return (
     <>
-      {outdated && !isApp && (
+      {updating && (
+        <div className="updating-screen" role="status">
+          <img src="/nimbo-icon-256.png" alt="" />
+          <strong>Atualizando o Nimbo</strong>
+          <span>Versão {updating}. O app fecha e abre sozinho em alguns segundos.</span>
+          <div className="updating-bar">
+            <i />
+          </div>
+        </div>
+      )}
+      {!isApp && progress > 0 && progress < 100 && (
+        <span className="update-pill downloading">
+          <Download size={14} />
+          Baixando atualização {progress}%
+        </span>
+      )}
+      {outdated && !isApp && !(progress > 0 && progress < 100) && (
         <div className="update-card" role="alert">
           <img src="/nimbo-icon-128.png" alt="" />
           <div className="update-text">
-            <strong>Seu app do Nimbo está desatualizado</strong>
+            <strong>{failed ? 'A atualização não foi instalada' : 'Seu app do Nimbo está desatualizado'}</strong>
             <span>
               Você está com a versão {outdated} e a atual é a {SITE_VERSION}.{' '}
               {APP_VERSION && !newer('0.3.0', APP_VERSION)

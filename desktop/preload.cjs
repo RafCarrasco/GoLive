@@ -13,6 +13,11 @@ contextBridge.exposeInMainWorld('nimboDesktop', {
     return ipcRenderer.invoke('nimbo:update:watch');
   },
   installUpdate: () => ipcRenderer.invoke('nimbo:update:install'),
+  onUpdateProgress: (onProgress) => {
+    const listener = (_event, percent) => onProgress(Number(percent) || 0);
+    ipcRenderer.on('nimbo:update:progress', listener);
+    return () => ipcRenderer.off('nimbo:update:progress', listener);
+  },
   startGameWatch: () => ipcRenderer.invoke('nimbo:game:start'),
   stopGameWatch: (id) => ipcRenderer.invoke('nimbo:game:stop', String(id)),
   onGameState: (id, onChange) => {

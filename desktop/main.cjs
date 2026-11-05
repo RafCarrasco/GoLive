@@ -534,38 +534,69 @@ handleApp('nimbo:game:stop', (_event, id) => {
   setTimeout(() => child.kill(), 1500).unref();
 });
 
-app.on('before-quit', () => {
-  for (const child of [...audioSessions.values(), ...gameWatches.values()]) child.kill();
-  audioSessions.clear();
-  gameWatches.clear();
-});
+app.on('before-quit', () => stopHelpers());
 
 // ---------- Atualização automática ----------
-// O app instalado confere o último Release do GitHub ao abrir e a cada 6 horas; a versão nova é
-// baixada em segundo plano e entra ao reiniciar (ou na próxima vez que o app abrir).
-// Com o site aberto, o aviso aparece no próprio Nimbo; a caixa do Windows fica só de reserva.
+// O app instalado confere o último Release do GitHub ao abrir e a cada 6 horas e baixa a versão
+// nova em segundo plano, mostrando o progresso no próprio Nimbo. Ao clicar em atualizar, encerra
+// tudo o que poderia segurar arquivos do app (o capturador nativo roda de dentro da pasta do app;
+// se ele continuar aberto, o instalador não consegue trocar os arquivos e o app volta na versão
+// antiga), instala sem janela e reabre sozinho. A caixa do Windows fica só de reserva.
 let updater = null;
 let updateReady = null;
 let updateWatcher = null;
+
+const UPDATE_LOG = () => path.join(app.getPath('userData'), 'nimbo-update.log');
+function logUpdate(message) {
+  try {
+    require('fs').appendFileSync(UPDATE_LOG(), `${new Date().toISOString()} ${app.getVersion()} ${message}\n`);
+  } catch {
+    // Sem registro: segue sem ele.
+  }
+}
+
+function stopHelpers() {
+  for (const child of [...audioSessions.values(), ...gameWatches.values()]) child.kill();
+  audioSessions.clear();
+  gameWatches.clear();
+}
+
+function installUpdate() {
+  if (!updater || !updateReady) return false;
+  logUpdate(`instalando ${updateReady.version}`);
+  stopHelpers();
+  // Silenciosa (sem a janela do instalador) e reabrindo o app no fim.
+  setTimeout(() => updater.quitAndInstall(true, true), 300);
+  return true;
+}
 
 handleApp('nimbo:update:watch', (event) => {
   updateWatcher = event.sender;
   return updateReady;
 });
-handleApp('nimbo:update:install', () => {
-  if (updater && updateReady) updater.quitAndInstall();
-});
+handleApp('nimbo:update:install', () => installUpdate());
 
 function setupAutoUpdate() {
+  // NIMBO_UPDATE_URL aponta para outro servidor de atualização (testes do ciclo completo).
   if (!app.isPackaged) return;
   const { autoUpdater } = require('electron-updater');
   updater = autoUpdater;
+  if (process.env.NIMBO_UPDATE_URL) autoUpdater.setFeedURL({ provider: 'generic', url: process.env.NIMBO_UPDATE_URL });
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
-  autoUpdater.on('error', (e) => console.warn('[nimbo] atualização:', e?.message || e));
+  autoUpdater.on('error', (e) => {
+    console.warn('[nimbo] atualização:', e?.message || e);
+    logUpdate('erro: ' + (e?.message || e));
+  });
+  autoUpdater.on('update-available', (info) => logUpdate(`disponível ${info.version}`));
+  autoUpdater.on('download-progress', (p) => {
+    if (updateWatcher && !updateWatcher.isDestroyed())
+      updateWatcher.send('nimbo:update:progress', Math.round(p.percent || 0));
+  });
   let asked = false;
   autoUpdater.on('update-downloaded', async (info) => {
     updateReady = { version: info.version };
+    logUpdate(`baixada ${info.version}`);
     if (updateWatcher && !updateWatcher.isDestroyed()) {
       updateWatcher.send('nimbo:update:ready', updateReady);
       return;
@@ -581,8 +612,9 @@ function setupAutoUpdate() {
       defaultId: 0,
       cancelId: 1,
     });
-    if (response === 0) autoUpdater.quitAndInstall();
+    if (response === 0) installUpdate();
   });
+  logUpdate('aberto');
   const check = () => autoUpdater.checkForUpdates().catch(() => {});
   check();
   setInterval(check, 6 * 60 * 60 * 1000).unref();
