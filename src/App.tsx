@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { desktop } from './desktop';
 import {
   channelAllowed,
   createChannel,
@@ -27,6 +28,22 @@ import { AdminPanel } from './components/AdminPanel';
 import { NicknameForm, PermissionModal, StreamSettingsModal } from './components/Modals';
 import { Modal, useDialogs } from './ui/Modal';
 import { useToast } from './ui/Toast';
+
+const BROWSER_GAME_TIP = 'nimbo.browserGameTip';
+const readFlag = (key: string) => {
+  try {
+    return localStorage.getItem(key) === '1';
+  } catch {
+    return false;
+  }
+};
+const writeFlag = (key: string) => {
+  try {
+    localStorage.setItem(key, '1');
+  } catch {
+    // Sem armazenamento: a dica pode reaparecer.
+  }
+};
 
 export default function App() {
   const auth = useAuth();
@@ -133,6 +150,18 @@ function Community({ uid }: { uid: string }) {
         await live.stop(kind);
         toast.info(kind === 'camera' ? 'Webcam desligada' : 'Transmissão encerrada');
         return;
+      }
+      // No navegador, quem escolhe a fonte é o próprio navegador: jogo em tela cheia só aparece em
+      // "Tela inteira". Avisa uma vez, porque é aí que muita gente procura o jogo e não acha.
+      if (kind === 'screen' && !desktop && !readFlag(BROWSER_GAME_TIP)) {
+        const ok = await dialogs.confirm({
+          title: 'Vai transmitir um jogo?',
+          message:
+            'No navegador, jogo em tela cheia (Valorant, CS) não aparece na lista de janelas: escolha a aba "Tela inteira". No app do Nimbo para Windows o jogo aparece pelo nome, com o som só dele: baixe em golive-ad118.web.app/baixar.',
+          confirmLabel: 'Entendi, continuar',
+        });
+        writeFlag(BROWSER_GAME_TIP);
+        if (!ok) return;
       }
       await live.start(kind, capture);
       const key = liveKey(uid, kind);
