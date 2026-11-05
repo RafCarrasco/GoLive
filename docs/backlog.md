@@ -27,6 +27,14 @@ Ao iniciar ou encerrar a própria live, as lives dos outros congelam por uma fra
 - **Ideias:** bitrate adaptativo (baixar `maxBitrate` quando houver perda), aviso discreto de rede
   instável, não recriar as conexões P2P quando só a conexão com o Firebase oscilou.
 
+### Reconexão mais rápida logo depois de entrar no canal (pedido em 04/11/2026, para a próxima versão)
+Ao reabrir o app (por exemplo, depois de atualizar) a pessoa entra no canal com uma sessão nova e a
+conexão com quem está transmitindo é refeita do zero. Quando a primeira tentativa não pega, o vigia
+de `src/live/room.ts` (`checkMissing`) só reconecta depois de 20 s sem a live chegar, e no máximo uma
+vez a cada 45 s; nesse intervalo a live fica em "Conectando". Ideia: nos primeiros ~30 s depois de
+entrar no canal, considerar a live presa com ~6 s e permitir a primeira reconexão sem esperar os
+45 s; depois disso volta aos tempos atuais (para não ficar reconectando em rede ruim).
+
 ## App e atualizações
 
 ### ~~Selo "Atualização disponível" no topo~~ (feito na 0.3.4, 02/11/2026)
