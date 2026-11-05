@@ -4,6 +4,14 @@ export type Release = { version: string; date: string; items: string[] };
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.4.0',
+    date: '05/11/2026',
+    items: [
+      'Lives estáveis com o app atrás do jogo ou minimizado: o Windows freava o Nimbo em segundo plano e quem entrava via "Conectado, mas sem imagem".',
+      'Botão "Copiar diagnóstico" quando uma live trava: cole para quem cuida do Nimbo e o problema aparece na hora.',
+    ],
+  },
+  {
     version: '0.3.9',
     date: '04/11/2026',
     items: [

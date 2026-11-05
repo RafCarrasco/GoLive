@@ -18,6 +18,13 @@ const AUDIO_HELPER = app.isPackaged
 let mainWindow;
 
 app.setAppUserModelId('app.nimbo.desktop');
+// O Nimbo transmite ao vivo: com a janela atrás do jogo ou minimizada, o Chromium economizava
+// energia freando a página (a live de teste caiu de ~58 para ~1 quadro/s), e quem entrava via
+// "Conectado, mas sem imagem". Nada de frear a página nem tratar janela coberta como escondida.
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion,IntensiveWakeUpThrottling');
 if (!app.requestSingleInstanceLock()) app.quit();
 app.on('second-instance', () => focusMain());
 
@@ -691,6 +698,7 @@ app.whenReady().then(async () => {
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
+      backgroundThrottling: false,
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  ClipboardCopy,
   ImageOff,
   LoaderCircle,
   Maximize,
@@ -13,6 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { desktop } from '../desktop';
+import { APP_VERSION } from '../lib/version';
 
 export type TileState = 'playing' | 'connecting' | 'failed';
 
@@ -57,6 +59,21 @@ export function LiveTile({
   // Ter um stream não basta: só consideramos a live no ar quando chegam quadros de vídeo.
   const [hasFrames, setHasFrames] = useState(false);
   const [slow, setSlow] = useState(false);
+  const [copied, setCopied] = useState(false);
+  // Estado das conexões (rota, bytes e quadros) para colar a quem cuida do Nimbo quando uma live trava.
+  const copyDiagnostics = async () => {
+    const debug = (window as unknown as { nimboDebug?: () => Promise<unknown> }).nimboDebug;
+    const report = {
+      quando: new Date().toISOString(),
+      app: APP_VERSION || 'navegador',
+      live: name,
+      estado: state,
+      quadros: hasFrames,
+      conexoes: (await debug?.().catch(() => null)) ?? [],
+    };
+    await navigator.clipboard.writeText(JSON.stringify(report, null, 1)).catch(() => {});
+    setCopied(true);
+  };
   // A própria prévia nunca toca áudio: evita que o som capturado volte para a captura (eco).
   const silent = own || muted;
 
@@ -161,10 +178,17 @@ export function LiveTile({
                 : 'O problema é na captura de quem transmite. Se for um jogo em tela cheia, peça para transmitir a tela inteira.'}
             </small>
           )}
-          {!own && !compact && onRetry && (state === 'failed' || slow) && (
-            <button className="button ghost" onClick={onRetry}>
-              <RotateCw size={15} /> Tentar de novo
-            </button>
+          {!compact && (state === 'failed' || slow) && (
+            <div className="tile-actions">
+              {!own && onRetry && (
+                <button className="button ghost" onClick={onRetry}>
+                  <RotateCw size={15} /> Tentar de novo
+                </button>
+              )}
+              <button className="button ghost" onClick={() => void copyDiagnostics()}>
+                <ClipboardCopy size={15} /> {copied ? 'Copiado' : 'Copiar diagnóstico'}
+              </button>
+            </div>
           )}
         </div>
       )}
