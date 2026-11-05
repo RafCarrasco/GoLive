@@ -61,8 +61,10 @@ export function UpdateBanner({ live }: { live: boolean }) {
   const [busy, setBusy] = useState(false);
   // App instalado mais velho que o site e sem atualização chegando: o portátil e os apps antigos
   // não se atualizam sozinhos, então o jeito é baixar o instalador de novo.
-  const [outdated, setOutdated] = useState(() => (pendingResult() === 'failed' ? APP_VERSION : ''));
-  const [failed] = useState(() => pendingResult() === 'failed');
+  const [outdated, setOutdated] = useState('');
+  // O aviso de instalação que falhou disparava errado quando a pessoa reabria o app antes de o
+  // instalador terminar; fica desligado (o próprio app oferece a atualização de novo).
+  const failed = false;
   const [progress, setProgress] = useState(0);
   const [updating, setUpdating] = useState('');
   const [notes, setNotes] = useState(() => {
@@ -107,23 +109,23 @@ export function UpdateBanner({ live }: { live: boolean }) {
 
   useEffect(() => {
     const inApp = /Electron/i.test(navigator.userAgent);
-    if (!inApp || failed || (APP_VERSION && !newer(SITE_VERSION, APP_VERSION))) return;
-    const version = APP_VERSION || 'antiga';
-    // Antes da 0.3.0 (ou sem versão no app) não há atualização automática: avisa na hora. Nas
-    // outras, espera um minuto para dar tempo de a atualização automática baixar.
-    if (!APP_VERSION || newer('0.3.0', APP_VERSION)) {
-      setOutdated(version);
-      return;
-    }
-    const timer = setTimeout(() => setOutdated(version), 60000);
-    return () => clearTimeout(timer);
+    // Só para apps que não se atualizam sozinhos (o portátil e os anteriores à 0.3.0). Os
+    // instalados 0.3.x baixam a versão nova em segundo plano: nada de mandar baixar de novo.
+    if (inApp && (!APP_VERSION || newer('0.3.0', APP_VERSION))) setOutdated(APP_VERSION || 'antiga');
   }, []);
 
   useEffect(() => {
     let stopped = false;
+    let waiting: ReturnType<typeof setTimeout> | undefined;
     const check = () =>
       void siteUpdateAvailable()
-        .then((available) => !stopped && available && setSite(true))
+        .then((available) => {
+          if (stopped || !available) return;
+          // No app, um site novo quase sempre vem junto com um app novo: espera 2 minutos para
+          // a atualização do app chegar e mostrar um aviso só. Sem ela, mostra o do site.
+          if (desktop?.watchUpdate) waiting ??= setTimeout(() => setSite(true), 2 * 60 * 1000);
+          else setSite(true);
+        })
         .catch(() => {});
     const timer = setInterval(check, CHECK_EVERY);
     const onVisible = () => document.visibilityState === 'visible' && check();
@@ -131,6 +133,7 @@ export function UpdateBanner({ live }: { live: boolean }) {
     return () => {
       stopped = true;
       clearInterval(timer);
+      if (waiting) clearTimeout(waiting);
       document.removeEventListener('visibilitychange', onVisible);
     };
   }, []);
@@ -196,7 +199,7 @@ export function UpdateBanner({ live }: { live: boolean }) {
           </div>
         </div>
       )}
-      {(isApp || site) && cardClosed && (
+      {(isApp || (site && !(progress > 0 && progress < 100))) && cardClosed && (
         <button
           className="update-pill"
           disabled={busy}
@@ -207,7 +210,7 @@ export function UpdateBanner({ live }: { live: boolean }) {
           Atualização disponível
         </button>
       )}
-      {(isApp || site) && !cardClosed && (
+      {(isApp || (site && !(progress > 0 && progress < 100))) && !cardClosed && (
         <div className="update-card" role="status">
           <img src="/nimbo-icon-128.png" alt="" />
           <div className="update-text">

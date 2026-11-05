@@ -198,6 +198,9 @@ export class LiveRoom {
   private missingSince: Record<string, number> = {};
   private lastResync = 0;
   private autoResyncs = 0;
+  // Quando esta sessão entrou no canal (ou reconectou): nos primeiros 30 s a live presa é
+  // percebida mais cedo, porque é aí que a conexão com quem transmite está sendo refeita.
+  private sessionStart = 0;
 
   constructor(
     private db: Database,
@@ -262,6 +265,7 @@ export class LiveRoom {
     if (reset) for (const id of [...this.peers.keys()]) this.closePeer(id);
     await onDisconnect(this.memberRef).remove();
     await set(this.memberRef, { joinedAt: serverTimestamp() });
+    this.sessionStart = Date.now();
     for (const kind of this.locals.keys()) await this.publishStream(kind);
   }
 
@@ -277,7 +281,7 @@ export class LiveRoom {
 
   private listen() {
     let wasOffline = false;
-    const watchdog = setInterval(() => this.checkMissing(), 5000);
+    const watchdog = setInterval(() => this.checkMissing(), 2000);
     const adapt = setInterval(() => void this.adaptQuality(), 3000);
     this.unsubs.push(() => clearInterval(watchdog), () => clearInterval(adapt));
     this.unsubs.push(
@@ -601,8 +605,11 @@ export class LiveRoom {
     if (!waiting.length) this.autoResyncs = 0;
     for (const id of Object.keys(this.missingSince)) if (!waiting.includes(id)) delete this.missingSince[id];
     for (const id of waiting) this.missingSince[id] ??= now;
-    const stuck = waiting.some((id) => now - this.missingSince[id] > 20000);
-    if (stuck && now - this.lastResync > 45000 && this.autoResyncs < 3) {
+    // Logo depois de entrar: 6 s sem a live e a primeira reconexão não espera o intervalo.
+    const early = now - this.sessionStart < 30000;
+    const stuck = waiting.some((id) => now - this.missingSince[id] > (early ? 6000 : 20000));
+    const gap = early && this.autoResyncs === 0 ? 0 : 45000;
+    if (stuck && now - this.lastResync > gap && this.autoResyncs < 3) {
       this.autoResyncs++;
       void this.resync();
     }

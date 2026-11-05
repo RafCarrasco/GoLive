@@ -4,6 +4,16 @@ export type Release = { version: string; date: string; items: string[] };
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.3.9',
+    date: '04/11/2026',
+    items: [
+      'O seletor de transmissão não some mais minimizado deixando o Nimbo travado: ele sempre volta para a frente.',
+      'Um aviso só de atualização no app (antes vinha um do site e depois outro do app).',
+      'Quem tem o app instalado não recebe mais o aviso de baixar de novo: a atualização chega sozinha.',
+      'Ao entrar num canal, uma live que não carregou reconecta em segundos.',
+    ],
+  },
+  {
     version: '0.3.8',
     date: '04/11/2026',
     items: [

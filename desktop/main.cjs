@@ -324,6 +324,12 @@ function chooseCaptureSource() {
       height: 640,
       minWidth: 680,
       minHeight: 500,
+      // Minimizado, o seletor vira um quadradinho no canto da tela e, como é modal, deixa o Nimbo
+      // bloqueado (cada clique só faz o som de erro do Windows). Por isso não minimiza.
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      alwaysOnTop: true,
       title: 'Nimbo · Escolher o que transmitir',
       icon: ICON,
       backgroundColor: '#0b1020',
@@ -426,6 +432,26 @@ function chooseCaptureSource() {
       settle(null);
       return true;
     });
+    // Abre centralizado na tela onde está o Nimbo (um jogo em tela cheia pode ter mudado a
+    // resolução), e volta sozinho se algo o minimizar ou esconder.
+    const display = screen.getDisplayMatching(mainWindow.getBounds()).workArea;
+    const width = Math.min(880, display.width - 40);
+    const height = Math.min(640, display.height - 40);
+    picker.setBounds({
+      x: Math.round(display.x + (display.width - width) / 2),
+      y: Math.round(display.y + (display.height - height) / 2),
+      width,
+      height,
+    });
+    const keepVisible = () => {
+      if (picker.isDestroyed()) return;
+      if (picker.isMinimized()) picker.restore();
+      picker.show();
+      picker.focus();
+    };
+    picker.on('minimize', keepVisible);
+    mainWindow.on('focus', keepVisible);
+    picker.on('closed', () => mainWindow.off('focus', keepVisible));
     picker.once('ready-to-show', () => picker.show());
     picker.loadFile(path.join(__dirname, 'capture-picker.html')).catch((e) => {
       console.error(e);
