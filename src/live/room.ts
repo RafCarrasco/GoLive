@@ -55,6 +55,8 @@ export type LiveSnapshot = {
   remote: Record<string, Record<string, MediaStream>>;
   // Participantes cuja conexão P2P falhou de vez (sem TURN, algumas redes bloqueiam).
   failed: string[];
+  // Participantes cuja conexão P2P ainda está sendo negociada (sem caminho de rede ainda).
+  connecting: string[];
 };
 
 export type PeerDiagnostics = {
@@ -66,6 +68,10 @@ export type PeerDiagnostics = {
   videoBytesIn: number;
   videoBytesOut: number;
   framesIn: number;
+  localCandidates: string;
+  remoteCandidates: string;
+  pairs: string;
+  iceRestarts: number;
 };
 
 type Peer = {
@@ -76,6 +82,10 @@ type Peer = {
   candidates: RTCIceCandidateInit[];
   transceivers: Partial<Record<StreamKind, RTCRtpTransceiver[]>>;
   queue: Promise<void>;
+  // Desde quando o ICE procura caminho sem achar, e quantas rotas novas já foram pedidas.
+  checkingSince: number;
+  iceRestarts: number;
+  lastIceRestart: number;
 };
 
 type LocalLive = {
@@ -231,6 +241,9 @@ export class LiveRoom {
       local: Object.fromEntries([...this.locals].map(([kind, live]) => [kind, live.stream])),
       remote: Object.fromEntries(Object.entries(this.remote).map(([id, streams]) => [id, { ...streams }])),
       failed: [...this.failed],
+      connecting: [...this.peers.entries()]
+        .filter(([, p]) => p.pc.connectionState !== 'connected' && p.pc.connectionState !== 'failed')
+        .map(([id]) => id),
     };
   }
   private emit() {
@@ -399,6 +412,9 @@ export class LiveRoom {
       candidates: [],
       transceivers: {},
       queue: Promise.resolve(),
+      checkingSince: 0,
+      iceRestarts: 0,
+      lastIceRestart: 0,
     };
     this.peers.set(id, peer);
     pc.onnegotiationneeded = async () => {
@@ -419,13 +435,13 @@ export class LiveRoom {
     };
     pc.oniceconnectionstatechange = () => {
       console.info('[nimbo] ICE', id.slice(0, 5), pc.iceConnectionState);
+      if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') peer.iceRestarts = 0;
       if (pc.iceConnectionState === 'failed') pc.restartIce();
     };
     pc.onconnectionstatechange = () => {
       console.info('[nimbo] conexão', id.slice(0, 5), pc.connectionState);
       if (pc.connectionState === 'connected') this.failed.delete(id);
       else if (pc.connectionState === 'failed') this.failed.add(id);
-      else return;
       this.emit();
     };
     pc.ontrack = ({ track, streams }) => {
@@ -595,6 +611,24 @@ export class LiveRoom {
   private checkMissing() {
     if (!this.joined || !this.online) return;
     const now = Date.now();
+    // Caminho de rede que não aparece em 8 s: pede uma rota nova (até 3 vezes, a cada 12 s), em
+    // vez de esperar o navegador desistir de vez, o que pode levar mais de 30 s.
+    for (const [id, peer] of this.peers) {
+      // Conta a partir de quando já existe oferta/resposta e a conexão ainda não achou caminho
+      // (com a rede travada ela pode ficar em "new" sem nem passar para "checking").
+      const negotiating =
+        peer.pc.remoteDescription && (peer.pc.connectionState === 'new' || peer.pc.connectionState === 'connecting');
+      if (!negotiating) peer.checkingSince = 0;
+      else peer.checkingSince ||= now;
+      const stuck = peer.checkingSince && now - peer.checkingSince > 8000;
+      if (stuck && now - peer.lastIceRestart > 12000 && peer.iceRestarts < 3) {
+        peer.iceRestarts++;
+        peer.lastIceRestart = now;
+        peer.checkingSince = now;
+        console.info('[nimbo] rota nova para', id.slice(0, 5), 'tentativa', peer.iceRestarts);
+        peer.pc.restartIce();
+      }
+    }
     const waiting = Object.keys(this.broadcasts).filter(
       (id) =>
         id !== this.uid &&
@@ -626,6 +660,16 @@ export class LiveRoom {
         let videoBytesIn = 0;
         let videoBytesOut = 0;
         let framesIn = 0;
+        // Tipos de caminho que cada lado ofereceu (host = rede local, srflx = internet direta,
+        // relay = servidor TURN) e como foram os testes de pares: mostram se a rede bloqueia P2P.
+        const localTypes = new Set<string>();
+        const remoteTypes = new Set<string>();
+        const pairs: Record<string, number> = {};
+        stats.forEach((r: Record<string, unknown>) => {
+          if (r.type === 'local-candidate') localTypes.add(`${r.candidateType}/${r.protocol}`);
+          if (r.type === 'remote-candidate') remoteTypes.add(`${r.candidateType}/${r.protocol}`);
+          if (r.type === 'candidate-pair') pairs[String(r.state)] = (pairs[String(r.state)] || 0) + 1;
+        });
         stats.forEach((r: Record<string, unknown>) => {
           if (r.type === 'candidate-pair' && r.state === 'succeeded' && r.nominated) {
             const local = byId.get(r.localCandidateId as string);
@@ -647,6 +691,10 @@ export class LiveRoom {
           videoBytesIn,
           videoBytesOut,
           framesIn,
+          localCandidates: [...localTypes].join(' ') || 'nenhum',
+          remoteCandidates: [...remoteTypes].join(' ') || 'nenhum',
+          pairs: Object.entries(pairs).map(([k, v]) => `${k}:${v}`).join(' ') || 'nenhum',
+          iceRestarts: this.peers.get(id)?.iceRestarts || 0,
         };
       }),
     );

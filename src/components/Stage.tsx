@@ -110,7 +110,12 @@ export function Stage({
     const own = id === uid;
     const streamId = live.broadcasts[id]?.[kind]?.streamId;
     const stream = (own ? live.local[kind] : streamId ? live.remote[id]?.[streamId] : undefined) || null;
-    const state: TileState = live.failed.includes(id) ? 'failed' : stream ? 'playing' : 'connecting';
+    // Com as faixas já anunciadas mas a rede ainda negociando, é "conectando", não "sem imagem".
+    const state: TileState = live.failed.includes(id)
+      ? 'failed'
+      : stream && (own || !live.connecting.includes(id))
+        ? 'playing'
+        : 'connecting';
     const pref = audio[key] || { volume: 100, muted: false };
     return (
       <LiveTile

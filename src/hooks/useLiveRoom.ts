@@ -20,6 +20,7 @@ const EMPTY: LiveSnapshot = {
   local: {},
   remote: {},
   failed: [],
+  connecting: [],
 };
 
 type Handlers = {
