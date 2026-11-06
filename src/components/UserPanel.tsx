@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import type { StreamKind } from '../live/capture';
 import { SITE_VERSION } from '../lib/version';
+import { Avatar } from './Avatar';
 
 // Rodapé da barra lateral: conexão com o canal, controles de transmissão e conta.
 export function UserPanel({
@@ -25,6 +26,7 @@ export function UserPanel({
   onSwap,
   busy,
   nickname,
+  photo,
   roleLabel,
   onLeave,
   onToggle,
@@ -40,6 +42,7 @@ export function UserPanel({
   onSwap: () => void;
   busy: '' | 'joining' | 'starting';
   nickname: string;
+  photo?: string;
   roleLabel: string;
   onLeave: () => void;
   onToggle: (kind: StreamKind) => void;
@@ -124,7 +127,7 @@ export function UserPanel({
         </div>
       )}
       <div className="account-row">
-        <span className="avatar">{(nickname || '?').slice(0, 1).toUpperCase()}</span>
+        <Avatar photo={photo} name={nickname} />
         <div className="account-text">
           <strong>{nickname}</strong>
           <small>{roleLabel}</small>

@@ -61,7 +61,7 @@ versão (o site pode estar à frente do app) e para quem atualiza sem clicar (ab
 
 ## Comunidade
 
-### Foto de perfil visível para todos (pedido em 02/11/2026, para pensar depois)
+### ~~Foto de perfil visível para todos~~ (feito em 05/11/2026: opções A e B juntas)
 Restrições: sem Firebase Storage para fotos (combinado no handoff) e custo zero (plano Spark).
 
 - **Opção A, foto do Google:** o login já traz `user.photoURL`. Guardar essa URL no perfil

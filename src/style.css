@@ -1362,3 +1362,37 @@ h2 {
   justify-content: center;
   gap: 8px;
 }
+img.avatar.photo {
+  object-fit: cover;
+  background: var(--surface-2);
+}
+.avatar-picker {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+.avatar-preview {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+.avatar-preview .avatar {
+  width: 72px;
+  height: 72px;
+  font-size: 28px;
+}
+.avatar-preview svg {
+  position: absolute;
+  color: #fff;
+}
+.avatar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.avatar-actions small {
+  flex-basis: 100%;
+}

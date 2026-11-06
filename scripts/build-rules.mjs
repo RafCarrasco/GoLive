@@ -197,6 +197,29 @@ const rules = {
           ...noOtherFields,
         },
       },
+      // Foto de perfil, sem Firebase Storage: uma imagem pequena em texto (data URL, já reduzida
+      // pelo app para 128x128) ou a foto da própria conta Google. Cada um troca só a própria; o
+      // proprietário pode apagar a de qualquer pessoa (moderação). Apagar não passa pelo .validate.
+      avatars: {
+        '.read': approved,
+        $uid: {
+          '.write': or(and(approved, 'auth.uid === $uid'), and(approvedOwner, '!newData.exists()')),
+          '.validate': and(
+            'newData.isString()',
+            or(
+              and(
+                or(
+                  "newData.val().beginsWith('data:image/webp;base64,')",
+                  "newData.val().beginsWith('data:image/jpeg;base64,')",
+                  "newData.val().beginsWith('data:image/png;base64,')",
+                ),
+                'newData.val().length <= 24000',
+              ),
+              and("newData.val().beginsWith('https://lh3.googleusercontent.com/')", 'newData.val().length <= 400'),
+            ),
+          ),
+        },
+      },
       // Índices só com ids (sem nomes): o app descobre o que existe e lê cada item individualmente.
       // Categorias e canais sem acesso são recusados pelo servidor e nem aparecem.
       categoryIds: {

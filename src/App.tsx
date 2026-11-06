@@ -22,6 +22,7 @@ import { signOutAccount } from './session';
 import { LoadingScreen, LoginScreen, NicknameScreen, PendingScreen } from './components/AuthScreens';
 import { Sidebar } from './components/Sidebar';
 import { UserPanel } from './components/UserPanel';
+import { AvatarPicker } from './components/Avatar';
 import { UpdateBanner } from './components/UpdateBanner';
 import { Stage } from './components/Stage';
 import { AdminPanel } from './components/AdminPanel';
@@ -249,6 +250,7 @@ function Community({ uid }: { uid: string }) {
             onSwap={() => void swapScreen()}
             busy={live.busy}
             nickname={nickname}
+            photo={data.avatars[uid]}
             roleLabel={roleLabel[role]}
             onLeave={() => void live.leave()}
             onToggle={(kind) => void toggleBroadcast(kind)}
@@ -338,6 +340,7 @@ function Community({ uid }: { uid: string }) {
       )}
       {showProfile && (
         <Modal title="Seu perfil" kicker="CONTA" size="sm" onClose={() => setShowProfile(false)}>
+          <AvatarPicker uid={uid} name={nickname} photo={data.avatars[uid]} />
           <NicknameForm
             initial={nickname}
             submitLabel="Salvar"

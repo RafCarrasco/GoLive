@@ -110,6 +110,11 @@ export const watchChannels = (cb: (channels: Record<string, Channel>) => void) =
   watchIndexed('community/channelIds', 'community/channels', SYSTEM_CHANNELS, cb);
 export const watchProfiles = (cb: (profiles: Record<string, Profile>) => void) =>
   onValue(ref(db, 'community/profiles'), (s) => cb(s.val() || {}));
+// Fotos de perfil (data URL pequena ou foto da conta Google), por uid.
+export const watchAvatars = (cb: (avatars: Record<string, string>) => void) =>
+  onValue(ref(db, 'community/avatars'), (s) => cb(s.val() || {}));
+export const setAvatar = (uid: string, photo: string | null) =>
+  photo ? set(ref(db, `community/avatars/${uid}`), photo) : remove(ref(db, `community/avatars/${uid}`));
 export const watchRoles = (cb: (roles: Record<string, CommunityRole>) => void) =>
   onValue(ref(db, 'community/roles'), (s) => cb(s.val() || {}));
 export const NICKNAME_MIN = 3;

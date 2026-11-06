@@ -202,6 +202,31 @@ describe('perfis', () => {
   });
 });
 
+describe('fotos de perfil', () => {
+  const webp = 'data:image/webp;base64,' + 'A'.repeat(4000);
+  test('cada um troca só a própria foto, pequena e de imagem', async () => {
+    await assertSucceeds(set(ref(member(), 'community/avatars/member'), webp));
+    await assertSucceeds(set(ref(member(), 'community/avatars/member'), 'https://lh3.googleusercontent.com/a/abc=s128-c'));
+    await assertFails(set(ref(member(), 'community/avatars/admin'), webp));
+    await assertFails(set(ref(member(), 'community/avatars/member'), 'data:image/webp;base64,' + 'A'.repeat(30000)));
+    await assertFails(set(ref(member(), 'community/avatars/member'), 'data:text/html;base64,PHNjcmlwdD4='));
+    await assertFails(set(ref(member(), 'community/avatars/member'), 'https://evil.example/foto.png'));
+    await assertFails(set(ref(member(), 'community/avatars/member'), { url: webp }));
+    await assertFails(set(ref(pending(), 'community/avatars/pending'), webp));
+    await assertSucceeds(remove(ref(member(), 'community/avatars/member')));
+  });
+  test('membros aprovados veem as fotos; pendentes não', async () => {
+    await assertSucceeds(get(ref(member(), 'community/avatars')));
+    await assertFails(get(ref(pending(), 'community/avatars')));
+  });
+  test('proprietário pode apagar a foto de alguém, mas não trocar', async () => {
+    await env.withSecurityRulesDisabled((ctx) => set(ref(ctx.database(), 'community/avatars/member'), webp));
+    await assertFails(set(ref(owner(), 'community/avatars/member'), webp));
+    await assertFails(remove(ref(admin(), 'community/avatars/member')));
+    await assertSucceeds(remove(ref(owner(), 'community/avatars/member')));
+  });
+});
+
 describe('canais e categorias', () => {
   const channel = {
     name: 'Novo',

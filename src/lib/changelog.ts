@@ -7,6 +7,7 @@ export const CHANGELOG: Release[] = [
     version: '0.4.0',
     date: '05/11/2026',
     items: [
+      'Foto de perfil: em Seu perfil, escolha uma imagem ou use a foto do Google. Todo mundo vê no lugar da letra.',
       'Lives estáveis com o app atrás do jogo ou minimizado: o Windows freava o Nimbo em segundo plano e quem entrava via "Conectado, mas sem imagem".',
       'Botão "Copiar diagnóstico" quando uma live trava: cole para quem cuida do Nimbo e o problema aparece na hora.',
     ],

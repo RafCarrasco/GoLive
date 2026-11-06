@@ -10,6 +10,7 @@ import {
   Trash2,
   Video,
 } from 'lucide-react';
+import { Avatar } from './Avatar';
 import { categoryAllowed, channelAllowed, isStaff, type AccessLevel } from '../community';
 import type { CommunityData, RoomPresence } from '../hooks/useCommunity';
 
@@ -200,9 +201,7 @@ export function Sidebar({
                                   title={stream ? 'Assistir' : undefined}
                                   onClick={() => onWatch(id, memberId)}
                                 >
-                                  <span className="avatar small">
-                                    {(name || '?').slice(0, 1).toUpperCase()}
-                                  </span>
+                                  <Avatar photo={data.avatars[memberId]} name={name} small />
                                   <span className="participant-name" style={{ color: colorOf(memberId) }}>
                                     {name || 'Sessão sem perfil'}
                                   </span>

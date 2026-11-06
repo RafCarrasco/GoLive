@@ -89,6 +89,13 @@
           }
         }
       },
+      "avatars": {
+        ".read": "(auth != null && auth.token.firebase.sign_in_provider === 'google.com' && root.child('community/approved').child(auth.uid).val() === true)",
+        "$uid": {
+          ".write": "(((auth != null && auth.token.firebase.sign_in_provider === 'google.com' && root.child('community/approved').child(auth.uid).val() === true) && auth.uid === $uid) || (((auth != null && auth.token.firebase.sign_in_provider === 'google.com' && root.child('community/approved').child(auth.uid).val() === true) && root.child('community/roles').child(auth.uid).val() === 'owner') && !newData.exists()))",
+          ".validate": "(newData.isString() && (((newData.val().beginsWith('data:image/webp;base64,') || newData.val().beginsWith('data:image/jpeg;base64,') || newData.val().beginsWith('data:image/png;base64,')) && newData.val().length <= 24000) || (newData.val().beginsWith('https://lh3.googleusercontent.com/') && newData.val().length <= 400)))"
+        }
+      },
       "categoryIds": {
         ".read": "(auth != null && auth.token.firebase.sign_in_provider === 'google.com' && root.child('community/approved').child(auth.uid).val() === true)",
         "$id": {

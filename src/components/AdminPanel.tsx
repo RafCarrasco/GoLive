@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Check, FolderPlus, LoaderCircle, Pencil, Plus, Settings, Tag, Trash2, UserX, X } from 'lucide-react';
+import { Check, FolderPlus, ImageOff, LoaderCircle, Pencil, Plus, Settings, Tag, Trash2, UserX, X } from 'lucide-react';
+import { Avatar } from './Avatar';
 import {
   approveMember,
   assignRole,
@@ -16,6 +17,7 @@ import {
   rejectRequest,
   renameCategory,
   revokeMember,
+  setAvatar,
   roleLabel,
   watchApprovedMembers,
   watchRequests,
@@ -151,7 +153,7 @@ export function AdminPanel({
             const name = profile?.displayName || requests[id]?.email || 'Ainda sem nickname';
             return (
               <div className="admin-row" key={id}>
-                <span className="avatar">{name.slice(0, 1).toUpperCase()}</span>
+                <Avatar photo={data.avatars[id]} name={name} />
                 <div className="admin-row-text">
                   <strong>
                     {name}
@@ -224,6 +226,17 @@ export function AdminPanel({
                       <UserX size={16} />
                     </button>
                   </>
+                )}
+                {owner && id !== uid && data.avatars[id] && (
+                  <button
+                    className="icon-button"
+                    title="Remover foto"
+                    aria-label={'Remover a foto de ' + name}
+                    disabled={busy !== ''}
+                    onClick={() => void run('photo:' + id, () => setAvatar(id, null), 'Foto removida')}
+                  >
+                    <ImageOff size={16} />
+                  </button>
                 )}
               </div>
             );
