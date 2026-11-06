@@ -1396,3 +1396,46 @@ img.avatar.photo {
 .avatar-actions small {
   flex-basis: 100%;
 }
+.cropper {
+  position: relative;
+  margin: 0 auto;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #05080f;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.cropper:active {
+  cursor: grabbing;
+}
+.cropper img {
+  position: absolute;
+  max-width: none;
+  pointer-events: none;
+}
+.cropper-mask {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 999px rgba(5, 8, 15, 0.62);
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: -2px;
+  pointer-events: none;
+}
+.cropper-zoom {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 280px;
+  margin: 16px auto 6px;
+  color: var(--muted);
+}
+.cropper-zoom input {
+  flex: 1;
+  accent-color: var(--primary);
+}
+.cropper-hint {
+  display: block;
+  text-align: center;
+}
