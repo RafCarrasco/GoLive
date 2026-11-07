@@ -29,7 +29,14 @@ export const signInGoogle = async () => {
     return signInWithCredential(auth, GoogleAuthProvider.credential(idToken || null, accessToken || null));
   }
   if (/Electron/i.test(navigator.userAgent)) return signInWithRedirect(auth, provider);
-  return signInWithPopup(auth, provider);
+  try {
+    return await signInWithPopup(auth, provider);
+  } catch (e) {
+    const code = (e as { code?: string }).code;
+    if (code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment')
+      return signInWithRedirect(auth, provider);
+    throw e;
+  }
 };
 export const completeGoogleRedirect = () => getRedirectResult(auth);
 

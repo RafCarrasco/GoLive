@@ -15,6 +15,9 @@ import {
 } from 'lucide-react';
 import type { StreamKind } from '../live/capture';
 import { SITE_VERSION } from '../lib/version';
+
+// Navegadores de celular não têm captura de tela: lá só a webcam.
+const canShareScreen = typeof navigator.mediaDevices?.getDisplayMedia === 'function';
 import { Avatar } from './Avatar';
 
 // Rodapé da barra lateral: conexão com o canal, controles de transmissão e conta.
@@ -94,6 +97,7 @@ export function UserPanel({
               <CameraIcon size={18} />
               <span>Webcam</span>
             </button>
+            {canShareScreen && (
             <button
               className={'stream-button' + (liveKinds.screen ? ' live' : '')}
               disabled={busy !== ''}
@@ -104,6 +108,7 @@ export function UserPanel({
               {busy === 'starting' ? <LoaderCircle size={18} className="spin" /> : <ScreenIcon size={18} />}
               <span>{liveKinds.screen ? 'Encerrar' : 'Tela'}</span>
             </button>
+            )}
             {liveKinds.screen && (
               <button
                 className="stream-button square"

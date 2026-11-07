@@ -1154,22 +1154,58 @@ h2 {
   }
 }
 
-/* ---------- Telas pequenas ---------- */
+/* ---------- Telas pequenas (celular) ---------- */
+.mobile-bar,
+.menu-backdrop {
+  display: none;
+}
 @media (max-width: 760px) {
   .app {
     grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(0, 1fr);
-    height: auto;
-    min-height: 100vh;
-    overflow: visible;
+    height: 100dvh;
   }
+  /* A barra lateral vira um menu que desliza da esquerda. */
   .sidebar {
-    max-height: 50vh;
-    border-right: 0;
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 30;
+    width: min(320px, 86vw);
+    transform: translateX(-100%);
+    transition: transform 0.2s ease-out;
+    box-shadow: 20px 0 60px rgba(0, 0, 0, 0.45);
+  }
+  .menu-open .sidebar {
+    transform: none;
+  }
+  .menu-open .menu-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 29;
+    background: rgba(4, 7, 15, 0.6);
+  }
+  .mobile-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 52px;
+    padding: 0 10px;
     border-bottom: 1px solid var(--border);
+    flex: none;
+  }
+  .mobile-bar img {
+    width: 26px;
+    height: 26px;
+  }
+  .mobile-bar strong {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .content {
-    min-height: 60vh;
+    min-height: 0;
   }
   .row-actions {
     opacity: 1;
@@ -1177,10 +1213,32 @@ h2 {
   .stage-head {
     flex-wrap: wrap;
     height: auto;
-    padding: 10px 16px;
+    padding: 8px 12px;
+    gap: 8px;
+  }
+  .stage-title {
+    display: none;
+  }
+  .stage-area {
+    padding: 8px;
   }
   .option-row {
     grid-template-columns: 1fr;
+  }
+  /* Toque não tem "passar o mouse": controles das lives sempre visíveis e maiores. */
+  .icon-button,
+  .tile-button {
+    min-width: 40px;
+    min-height: 40px;
+  }
+  .update-card {
+    top: 60px;
+  }
+}
+@media (hover: none) {
+  .live-tile .tile-controls,
+  .live-tile .tile-top .tile-button {
+    opacity: 1;
   }
 }
 

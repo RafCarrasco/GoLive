@@ -14,6 +14,7 @@ import {
 } from './community';
 import { useAuth } from './hooks/useAuth';
 import { useCommunity, useRoomsPresence } from './hooks/useCommunity';
+import { Menu } from 'lucide-react';
 import { useLiveRoom } from './hooks/useLiveRoom';
 import { useRoomSounds } from './hooks/useRoomSounds';
 import { loadCaptureSettings, saveCaptureSettings, type StreamKind } from './live/capture';
@@ -94,6 +95,7 @@ function Community({ uid }: { uid: string }) {
     setVisible((ids) => [...new Set([...ids, ...keys])].slice(0, 4));
   }, [keysOf]);
   const [adminOpen, setAdminOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [permission, setPermission] = useState<{ kind: 'category' | 'channel'; id: string } | null>(null);
   const [showStreamSettings, setShowStreamSettings] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -221,8 +223,10 @@ function Community({ uid }: { uid: string }) {
     : '';
 
   return (
-    <div className="app">
+    <div className={'app' + (menuOpen ? ' menu-open' : '')}>
       <UpdateBanner live={Object.keys(snapshot.local).length > 0} />
+      {/* No celular a barra lateral vira um menu que abre por cima. */}
+      <button className="menu-backdrop" aria-label="Fechar menu" onClick={() => setMenuOpen(false)} />
       <Sidebar
         uid={uid}
         data={data}
@@ -230,9 +234,18 @@ function Community({ uid }: { uid: string }) {
         room={room}
         disabled={live.busy === 'joining'}
         adminOpen={adminOpen}
-        onJoin={(id) => void join(id)}
-        onWatch={(id, member) => void join(id, member)}
-        onOpenAdmin={() => setAdminOpen((v) => !v)}
+        onJoin={(id) => {
+          setMenuOpen(false);
+          void join(id);
+        }}
+        onWatch={(id, member) => {
+          setMenuOpen(false);
+          void join(id, member);
+        }}
+        onOpenAdmin={() => {
+          setMenuOpen(false);
+          setAdminOpen((v) => !v);
+        }}
         onPermission={setPermission}
         onCreateChannel={(id) => void createChannelIn(id)}
         onRemoveSession={(id, member) =>
@@ -267,6 +280,14 @@ function Community({ uid }: { uid: string }) {
         }
       />
       <main className="content">
+        <header className="mobile-bar">
+          <button className="icon-button" aria-label="Abrir menu" onClick={() => setMenuOpen(true)}>
+            <Menu size={20} />
+          </button>
+          <img src="/nimbo-icon-64.png" alt="" />
+          <strong>{room ? channelName : 'Nimbo'}</strong>
+          {Object.keys(snapshot.local).length > 0 && <span className="live-pill">AO VIVO</span>}
+        </header>
         {adminOpen && staff ? (
           <AdminPanel
             uid={uid}
