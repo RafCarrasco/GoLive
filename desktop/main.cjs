@@ -405,7 +405,7 @@ function chooseCaptureSource() {
           source: monitor,
           label: name,
           audioArgs: ['include', String(pid)],
-          game: window?.hwnd || null,
+          game: window?.hwnd ? ['watch', window.hwnd] : ['watchpid', String(pid)],
           audio: Boolean(audio),
         });
         return true;
@@ -423,7 +423,7 @@ function chooseCaptureSource() {
         const hwnd = id.split(':')[1];
         const monitor = await gameCapture(hwnd);
         if (monitor) {
-          settle({ source: monitor, label: source.name, audioArgs: ['window', hwnd], game: hwnd, audio: Boolean(audio) });
+          settle({ source: monitor, label: source.name, audioArgs: ['window', hwnd], game: ['watch', hwnd], audio: Boolean(audio) });
           return true;
         }
       }
@@ -539,7 +539,7 @@ handleApp('nimbo:game:start', (event) => {
   pendingGame = null;
   if (!game) return null;
   const id = crypto.randomUUID();
-  const child = spawn(AUDIO_HELPER, ['watch', game.hwnd], { windowsHide: true });
+  const child = spawn(AUDIO_HELPER, game.args, { windowsHide: true });
   const target = event.sender;
   let buffer = '';
   child.stdout.setEncoding('utf8');
@@ -547,8 +547,13 @@ handleApp('nimbo:game:start', (event) => {
     buffer += data;
     const lines = buffer.split('\n');
     buffer = lines.pop();
-    for (const line of lines)
-      if (line.trim() && !target.isDestroyed()) target.send('nimbo:game:state', id, line.trim() === '1');
+    for (const line of lines) {
+      const value = line.trim();
+      if (!value || target.isDestroyed()) continue;
+      // "x": o processo do jogo terminou; o site encerra a live.
+      if (value === 'x') target.send('nimbo:game:ended', id);
+      else target.send('nimbo:game:state', id, value === '1');
+    }
   });
   child.on('exit', () => {
     gameWatches.delete(id);
@@ -676,7 +681,7 @@ app.whenReady().then(async () => {
       if (!appOnly(request.securityOrigin)) return callback({});
       const selected = await chooseCaptureSource();
       if (!selected) return callback({});
-      pendingGame = selected.game ? { hwnd: selected.game, label: selected.label } : null;
+      pendingGame = selected.game ? { args: selected.game, label: selected.label } : null;
       pendingAudio = selected.audio
         ? { args: selected.audioArgs || audioArgs(selected.source), label: selected.label || selected.source.name }
         : null;

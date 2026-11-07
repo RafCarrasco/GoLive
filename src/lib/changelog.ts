@@ -4,6 +4,14 @@ export type Release = { version: string; date: string; items: string[] };
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.4.1',
+    date: '06/11/2026',
+    items: [
+      'Fechou o jogo? A live dele encerra sozinha, com um aviso.',
+      'Live presa procurando caminho de rede tenta uma rota nova sozinha, e o aviso mostra "conectando" em vez de "sem imagem".',
+    ],
+  },
+  {
     version: '0.4.0',
     date: '05/11/2026',
     items: [

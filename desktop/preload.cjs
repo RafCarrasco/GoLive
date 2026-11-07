@@ -27,6 +27,13 @@ contextBridge.exposeInMainWorld('nimboDesktop', {
     ipcRenderer.on('nimbo:game:state', listener);
     return () => ipcRenderer.off('nimbo:game:state', listener);
   },
+  onGameEnded: (id, onEnded) => {
+    const listener = (_event, watchId) => {
+      if (watchId === id) onEnded();
+    };
+    ipcRenderer.on('nimbo:game:ended', listener);
+    return () => ipcRenderer.off('nimbo:game:ended', listener);
+  },
   onAudio: (id, onData, onEnd) => {
     const data = (_event, sessionId, chunk) => {
       if (sessionId === id) onData(chunk);

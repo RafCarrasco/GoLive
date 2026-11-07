@@ -18,6 +18,8 @@ type DesktopBridge = {
   startGameWatch?(): Promise<Result<{ id: string; label: string } | null>>;
   stopGameWatch?(id: string): Promise<void>;
   onGameState?(id: string, onChange: (active: boolean) => void): () => void;
+  // A partir do app 0.4.1: o processo do jogo terminou.
+  onGameEnded?(id: string, onEnded: () => void): () => void;
 };
 
 export const desktop = (window as { nimboDesktop?: DesktopBridge }).nimboDesktop;
@@ -114,7 +116,12 @@ export async function desktopAudioTrack(): Promise<MediaStreamTrack | null> {
 
 // Jogo em tela cheia transmitido pelo monitor: avisa quando ele sai da frente (Alt+Tab) para o
 // site mostrar a tela de pausa no lugar da área de trabalho.
-export type GameWatch = { label: string; onChange(cb: (active: boolean) => void): void; stop(): void };
+export type GameWatch = {
+  label: string;
+  onChange(cb: (active: boolean) => void): void;
+  onEnded(cb: () => void): void;
+  stop(): void;
+};
 const gameWatches = new WeakMap<MediaStream, GameWatch>();
 export const gameWatchOf = (stream: MediaStream) => gameWatches.get(stream);
 
@@ -125,10 +132,20 @@ export async function watchGameFor(stream: MediaStream) {
   const { id, label } = started.value;
   const listeners: Array<(active: boolean) => void> = [];
   let current: boolean | null = null;
-  const unsubscribe = desktop.onGameState(id, (active) => {
+  const unsubscribeState = desktop.onGameState(id, (active) => {
     current = active;
     listeners.forEach((cb) => cb(active));
   });
+  const endedListeners: Array<() => void> = [];
+  let ended = false;
+  const unsubscribeEnded = desktop.onGameEnded?.(id, () => {
+    ended = true;
+    endedListeners.forEach((cb) => cb());
+  });
+  const unsubscribe = () => {
+    unsubscribeState();
+    unsubscribeEnded?.();
+  };
   let stopped = false;
   const watch: GameWatch = {
     label,
@@ -136,6 +153,10 @@ export async function watchGameFor(stream: MediaStream) {
     onChange: (cb) => {
       listeners.push(cb);
       if (current !== null) cb(current);
+    },
+    onEnded: (cb) => {
+      endedListeners.push(cb);
+      if (ended) cb();
     },
     stop: () => {
       if (stopped) return;

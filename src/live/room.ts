@@ -738,6 +738,11 @@ export class LiveRoom {
     this.emit();
   }
 
+  // Encerra a live só se ela ainda for desta captura (o jogo fechou depois de uma troca de fonte).
+  async stopIfCurrent(kind: StreamKind, stream: MediaStream) {
+    if (this.locals.get(kind)?.stream === stream) await this.stopBroadcast(kind);
+  }
+
   // O jogo transmitido saiu (ou voltou) para a frente. Vale só para a live atual desse tipo.
   setPaused(kind: StreamKind, stream: MediaStream, paused: boolean) {
     const live = this.locals.get(kind);

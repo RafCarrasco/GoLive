@@ -12,8 +12,9 @@
 //                                   Chromium)
 //   nimbo-audio.exe restore <hwnd>  traz a janela de volta (o jogo volta à tela ao ser escolhido)
 //   nimbo-audio.exe info <hwnd>     retângulo da janela e do monitor dela, e se cobre o monitor
-//   nimbo-audio.exe watch <hwnd>    escreve 1 quando o jogo está na frente e 0 quando sai (Alt+Tab,
-//                                   minimizado ou fechado), a cada mudança, até a entrada fechar
+//   nimbo-audio.exe watch <hwnd>    escreve 1 quando o jogo está na frente, 0 quando sai (Alt+Tab ou
+//                                   minimizado) e x quando o jogo fecha; até a entrada fechar
+//   nimbo-audio.exe watchpid <pid>  o mesmo, a partir do processo do jogo
 //
 // Termina quando a entrada padrão fecha (o Nimbo saiu) ou em caso de erro (código != 0).
 // Compilar: csc /platform:x64 /optimize /out:nimbo-audio.exe NimboAudio.cs
@@ -143,7 +144,7 @@ namespace Nimbo
         [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr hwnd, int cmd);
         [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hwnd);
         [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr hwnd, int attribute, out int value, int size);
-        [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
+        [DllImport("kernel32.dll", SetLastError = true)] static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
         [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern bool QueryFullProcessImageName(IntPtr process, int flags, StringBuilder path, ref int size);
 
@@ -215,10 +216,25 @@ namespace Nimbo
         [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll")] static extern bool IsWindow(IntPtr hwnd);
 
-        static int WatchForeground(IntPtr hwnd)
+        [DllImport("kernel32.dll")] static extern bool GetExitCodeProcess(IntPtr process, out uint code);
+
+        // O jogo ainda está rodando? Sem permissão para consultar (processo protegido), considera
+        // que sim: a live só acaba quando dá para ter certeza de que o jogo fechou.
+        static bool Running(uint pid)
         {
-            uint gamePid;
-            GetWindowThreadProcessId(hwnd, out gamePid);
+            IntPtr process = OpenProcess(0x1000, false, pid);
+            // 87 (parâmetro inválido) = esse processo não existe mais; outro erro = sem permissão.
+            if (process == IntPtr.Zero) return Marshal.GetLastWin32Error() != 87;
+            uint code;
+            bool ok = GetExitCodeProcess(process, out code);
+            CloseHandle(process);
+            return !ok || code == 259; // STILL_ACTIVE
+        }
+
+        // Escreve 1 quando uma janela do jogo está na frente, 0 quando não, e "x" quando o processo do
+        // jogo termina. Olha o processo, e não uma janela: jogos recriam a janela ao trocar de modo.
+        static int WatchForeground(uint gamePid)
+        {
             var stop = new ManualResetEvent(false);
             var watcher = new Thread(() =>
             {
@@ -230,18 +246,22 @@ namespace Nimbo
             int last = -1;
             do
             {
+                if (!Running(gamePid))
+                {
+                    Console.Out.Write("x\n");
+                    Console.Out.Flush();
+                    return 0;
+                }
                 uint foregroundPid = 0;
                 IntPtr foreground = GetForegroundWindow();
                 if (foreground != IntPtr.Zero) GetWindowThreadProcessId(foreground, out foregroundPid);
-                // Qualquer janela do próprio jogo na frente conta (menus, launcher interno).
-                int active = IsWindow(hwnd) && !IsIconic(hwnd) && foregroundPid == gamePid ? 1 : 0;
+                int active = foreground != IntPtr.Zero && foregroundPid == gamePid && !IsIconic(foreground) ? 1 : 0;
                 if (active != last)
                 {
                     Console.Out.Write(active + "\n");
                     Console.Out.Flush();
                     last = active;
                 }
-                if (!IsWindow(hwnd)) return 0;
             } while (!stop.WaitOne(250));
             return 0;
         }
@@ -321,7 +341,16 @@ namespace Nimbo
             {
                 long watched;
                 if (!long.TryParse(args[1], out watched)) return Fail("janela inválida");
-                return WatchForeground(new IntPtr(watched));
+                uint watchedPid;
+                GetWindowThreadProcessId(new IntPtr(watched), out watchedPid);
+                if (watchedPid == 0) return Fail("janela não encontrada");
+                return WatchForeground(watchedPid);
+            }
+            if (args.Length == 2 && args[0] == "watchpid")
+            {
+                uint watchedPid;
+                if (!uint.TryParse(args[1], out watchedPid)) return Fail("pid inválido");
+                return WatchForeground(watchedPid);
             }
             if (args.Length == 2 && args[0] == "info")
             {

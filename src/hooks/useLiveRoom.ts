@@ -105,7 +105,11 @@ export function useLiveRoom(uid: string, handlers: Handlers) {
       }
       if (replace) await room.replaceSource(kind, stream, maxBitrate(kind, settings));
       else await room.startBroadcast(stream, kind, maxBitrate(kind, settings));
-      gameWatchOf(stream)?.onChange((active) => room.setPaused(kind, stream, !active));
+      const game = gameWatchOf(stream);
+      game?.onChange((active) => room.setPaused(kind, stream, !active));
+      game?.onEnded(() => {
+        void room.stopIfCurrent(kind, stream).then(() => handlersRef.current.onIssue('O jogo fechou e a live foi encerrada.'));
+      });
     } finally {
       setBusy('');
     }
