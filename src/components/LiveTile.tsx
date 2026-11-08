@@ -211,6 +211,14 @@ export function LiveTile({
       </div>
       {!compact && (
         <div className="tile-controls">
+          {!own && !hasAudio && !camera && (
+            <span
+              className="no-audio"
+              title="Quem transmite não enviou som. No navegador, é preciso marcar 'Compartilhar áudio' ao escolher a tela; no app do Nimbo o som vai pela opção de áudio."
+            >
+              <VolumeX size={16} aria-hidden /> Sem som
+            </span>
+          )}
           {!own && hasAudio && (
             <div className="volume">
               <button

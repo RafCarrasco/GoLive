@@ -1497,3 +1497,14 @@ img.avatar.photo {
   display: block;
   text-align: center;
 }
+.no-audio {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(5, 8, 15, 0.6);
+  color: #c9cfe4;
+  font-size: 12px;
+  cursor: help;
+}
