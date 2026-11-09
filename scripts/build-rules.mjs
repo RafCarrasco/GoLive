@@ -197,6 +197,26 @@ const rules = {
           ...noOtherFields,
         },
       },
+      // Servidor de retransmissão (TURN) para quem não consegue conexão direta. Os dados ficam aqui,
+      // fora do código: só o proprietário grava e só membros aprovados leem (o app precisa deles
+      // para montar a conexão).
+      turn: {
+        '.read': approved,
+        '.write': approvedOwner,
+        '.validate': "newData.hasChildren(['urls','username','credential','updatedAt'])",
+        urls: {
+          '.validate': and(
+            'newData.isString()',
+            or("newData.val().beginsWith('turn:')", "newData.val().beginsWith('turns:')"),
+            'newData.val().length <= 600',
+          ),
+        },
+        username: { '.validate': and('newData.isString()', 'newData.val().length >= 1', 'newData.val().length <= 256') },
+        credential: { '.validate': and('newData.isString()', 'newData.val().length >= 1', 'newData.val().length <= 256') },
+        updatedAt: { '.validate': 'newData.isNumber()' },
+        expiresAt: { '.validate': 'newData.isNumber()' },
+        ...noOtherFields,
+      },
       // Foto de perfil, sem Firebase Storage: uma imagem pequena em texto (data URL, já reduzida
       // pelo app para 128x128) ou a foto da própria conta Google. Cada um troca só a própria; o
       // proprietário pode apagar a de qualquer pessoa (moderação). Apagar não passa pelo .validate.

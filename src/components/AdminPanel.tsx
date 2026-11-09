@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Check, FolderPlus, ImageOff, LoaderCircle, Pencil, Plus, Settings, Tag, Trash2, UserX, X } from 'lucide-react';
 import { Avatar } from './Avatar';
+import { NetworkSettings } from './NetworkSettings';
 import {
   approveMember,
   assignRole,
@@ -29,7 +30,7 @@ import type { CommunityData } from '../hooks/useCommunity';
 import { useDialogs } from '../ui/Modal';
 import { useToast } from '../ui/Toast';
 
-type Tab = 'members' | 'requests' | 'roles' | 'channels';
+type Tab = 'members' | 'requests' | 'roles' | 'channels' | 'network';
 const nameRule = (v: string) =>
   v.trim().length < 2 || v.trim().length > 32 ? 'Use de 2 a 32 caracteres.' : '';
 
@@ -81,6 +82,7 @@ export function AdminPanel({
     ['members', 'Membros'],
     ...(owner ? ([['roles', 'Cargos']] as Array<[Tab, string]>) : []),
     ['channels', 'Canais'],
+    ...(owner ? ([['network', 'Rede']] as Array<[Tab, string]>) : []),
   ];
   const roleEntries = Object.entries(data.roleDefs).sort((a, b) => a[1].createdAt - b[1].createdAt);
   const nextColor = ROLE_COLORS[roleEntries.length % ROLE_COLORS.length];
@@ -243,6 +245,8 @@ export function AdminPanel({
           })}
         </div>
       )}
+
+      {tab === 'network' && owner && <NetworkSettings />}
 
       {tab === 'roles' && (
         <div className="admin-list">

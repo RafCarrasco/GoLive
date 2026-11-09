@@ -1508,3 +1508,26 @@ img.avatar.photo {
   font-size: 12px;
   cursor: help;
 }
+.network-settings .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+.network-settings .field.inline {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+.network-settings .field.inline input {
+  width: 80px;
+}
+.network-settings textarea {
+  font: 12px Consolas, monospace;
+  resize: vertical;
+}
+.field-ok {
+  margin: 0;
+  color: var(--success);
+  font-size: 13px;
+}

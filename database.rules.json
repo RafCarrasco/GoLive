@@ -89,6 +89,29 @@
           }
         }
       },
+      "turn": {
+        ".read": "(auth != null && auth.token.firebase.sign_in_provider === 'google.com' && root.child('community/approved').child(auth.uid).val() === true)",
+        ".write": "((auth != null && auth.token.firebase.sign_in_provider === 'google.com' && root.child('community/approved').child(auth.uid).val() === true) && root.child('community/roles').child(auth.uid).val() === 'owner')",
+        ".validate": "newData.hasChildren(['urls','username','credential','updatedAt'])",
+        "urls": {
+          ".validate": "(newData.isString() && (newData.val().beginsWith('turn:') || newData.val().beginsWith('turns:')) && newData.val().length <= 600)"
+        },
+        "username": {
+          ".validate": "(newData.isString() && newData.val().length >= 1 && newData.val().length <= 256)"
+        },
+        "credential": {
+          ".validate": "(newData.isString() && newData.val().length >= 1 && newData.val().length <= 256)"
+        },
+        "updatedAt": {
+          ".validate": "newData.isNumber()"
+        },
+        "expiresAt": {
+          ".validate": "newData.isNumber()"
+        },
+        "$other": {
+          ".validate": false
+        }
+      },
       "avatars": {
         ".read": "(auth != null && auth.token.firebase.sign_in_provider === 'google.com' && root.child('community/approved').child(auth.uid).val() === true)",
         "$uid": {

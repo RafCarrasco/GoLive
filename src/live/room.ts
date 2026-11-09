@@ -11,6 +11,7 @@ import {
   type Database,
 } from 'firebase/database';
 import { LEVELS, nextQuality, type QualityState } from './quality';
+import { loadTurn, type TurnConfig } from '../community';
 import type { StreamKind } from './capture';
 
 // Sinalização: rooms/{room}/signals/{destinatário}/{remetente}/{id}
@@ -164,10 +165,22 @@ const ICE: RTCConfiguration = {
 
 export const MAX_MEMBERS = 20;
 
-// Confere se o TURN configurado responde: força uma conexão só por relay e espera um candidato dele.
-export async function testTurn(timeoutMs = 8000) {
-  if (!turnUrls.length) return { configured: false, works: false };
-  const pc = new RTCPeerConnection({ ...ICE, iceTransportPolicy: 'relay' });
+// Servidores ICE com o TURN salvo pelo proprietário (aba "Rede"), quando houver.
+function iceWith(turn: TurnConfig | null): RTCConfiguration {
+  if (!turn?.urls || !turn.username || !turn.credential) return ICE;
+  return {
+    iceServers: [
+      ...(ICE.iceServers || []),
+      { urls: turn.urls.split(',').filter(Boolean), username: turn.username, credential: turn.credential },
+    ],
+  };
+}
+
+// Confere se um TURN responde: força uma conexão só por relay e espera um candidato dele. Sem
+// servidores informados, testa o configurado no build (VITE_TURN_*).
+export async function testTurn(servers?: RTCIceServer[], timeoutMs = 8000) {
+  if (!servers && !turnUrls.length) return { configured: false, works: false };
+  const pc = new RTCPeerConnection({ ...(servers ? { iceServers: servers } : ICE), iceTransportPolicy: 'relay' });
   pc.createDataChannel('turn-test');
   const works = await new Promise<boolean>((resolve) => {
     const timer = setTimeout(() => resolve(false), timeoutMs);
@@ -199,6 +212,7 @@ export class LiveRoom {
   private announced = new Map<StreamKind, MediaStream>();
   private pause: { track: MediaStreamTrack; stop(): void } | null = null;
   private quality = new WeakMap<RTCRtpSender, QualityState>();
+  private ice: RTCConfiguration = ICE;
   private unsubs: Array<() => void> = [];
   private seen = new Set<string>();
   private joined = false;
@@ -253,6 +267,7 @@ export class LiveRoom {
   async join() {
     const members = (await get(this.path('members'))).val() as Record<string, unknown> | null;
     if (Object.keys(members || {}).length >= MAX_MEMBERS && !members?.[this.uid]) throw Error('Canal cheio');
+    this.ice = iceWith(await loadTurn());
     await this.clearInbox();
     await this.registerPresence();
     this.joined = true;
@@ -402,7 +417,7 @@ export class LiveRoom {
   private ensurePeer(id: string): Peer {
     const existing = this.peers.get(id);
     if (existing) return existing;
-    const pc = new RTCPeerConnection(ICE);
+    const pc = new RTCPeerConnection(this.ice);
     // "Perfect negotiation": em colisão de ofertas, o lado educado cede e o outro mantém a sua.
     const peer: Peer = {
       pc,

@@ -202,6 +202,24 @@ describe('perfis', () => {
   });
 });
 
+describe('servidor de retransmissão', () => {
+  const turn = { urls: 'turn:relay.example.com:3478', username: 'u', credential: 'p', updatedAt: 1 };
+  test('só o proprietário grava; aprovados leem; pendentes não', async () => {
+    await assertSucceeds(set(ref(owner(), 'community/turn'), turn));
+    await assertFails(set(ref(admin(), 'community/turn'), turn));
+    await assertFails(set(ref(member(), 'community/turn'), turn));
+    await assertSucceeds(get(ref(member(), 'community/turn')));
+    await assertFails(get(ref(pending(), 'community/turn')));
+  });
+  test('formato validado', async () => {
+    await assertFails(set(ref(owner(), 'community/turn'), { ...turn, urls: 'https://evil.example' }));
+    await assertFails(set(ref(owner(), 'community/turn'), { ...turn, username: '' }));
+    await assertFails(set(ref(owner(), 'community/turn'), { ...turn, extra: 1 }));
+    await assertSucceeds(set(ref(owner(), 'community/turn'), { ...turn, urls: 'turns:relay.example.com:5349,turn:relay.example.com:3478?transport=tcp' }));
+    await assertSucceeds(remove(ref(owner(), 'community/turn')));
+  });
+});
+
 describe('fotos de perfil', () => {
   const webp = 'data:image/webp;base64,' + 'A'.repeat(4000);
   test('cada um troca só a própria foto, pequena e de imagem', async () => {

@@ -110,6 +110,23 @@ export const watchChannels = (cb: (channels: Record<string, Channel>) => void) =
   watchIndexed('community/channelIds', 'community/channels', SYSTEM_CHANNELS, cb);
 export const watchProfiles = (cb: (profiles: Record<string, Profile>) => void) =>
   onValue(ref(db, 'community/profiles'), (s) => cb(s.val() || {}));
+// Servidor de retransmissão (TURN): endereços separados por vírgula, usuário, senha e validade.
+export type TurnConfig = { urls: string; username: string; credential: string; updatedAt: number; expiresAt?: number };
+export const watchTurn = (cb: (turn: TurnConfig | null) => void) =>
+  onValue(
+    ref(db, 'community/turn'),
+    (s) => cb(s.val()),
+    () => cb(null),
+  );
+export const loadTurn = () =>
+  get(ref(db, 'community/turn')).then(
+    (s) => s.val() as TurnConfig | null,
+    () => null,
+  );
+export const saveTurn = (turn: Omit<TurnConfig, 'updatedAt'>) =>
+  set(ref(db, 'community/turn'), { ...turn, updatedAt: Date.now() });
+export const removeTurn = () => remove(ref(db, 'community/turn'));
+
 // Fotos de perfil (data URL pequena ou foto da conta Google), por uid.
 export const watchAvatars = (cb: (avatars: Record<string, string>) => void) =>
   onValue(ref(db, 'community/avatars'), (s) => cb(s.val() || {}));
