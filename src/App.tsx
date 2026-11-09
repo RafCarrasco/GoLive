@@ -288,7 +288,7 @@ function Community({ uid }: { uid: string }) {
           <strong>{room ? channelName : 'Nimbo'}</strong>
           {Object.keys(snapshot.local).length > 0 && <span className="live-pill">AO VIVO</span>}
         </header>
-        {adminOpen && staff ? (
+        {adminOpen && (staff || data.netAdmins[uid]) ? (
           <AdminPanel
             uid={uid}
             data={data}

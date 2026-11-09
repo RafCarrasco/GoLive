@@ -14,6 +14,7 @@ import {
   watchChannelRoles,
   watchMemberRoles,
   watchAvatars,
+  watchNetAdmins,
   watchRoleDefs,
   type AccessData,
   type AccessLevel,
@@ -32,6 +33,7 @@ export type CommunityData = AccessData & {
   profiles: Record<string, Profile>;
   roleDefs: Record<string, RoleDef>;
   avatars: Record<string, string>;
+  netAdmins: Record<string, true>;
 };
 
 export function useCommunity(uid: string): CommunityData {
@@ -43,6 +45,7 @@ export function useCommunity(uid: string): CommunityData {
   const [roles, setRoles] = useState<Record<string, CommunityRole>>({});
   const [roleDefs, setRoleDefs] = useState<Record<string, RoleDef>>({});
   const [avatars, setAvatars] = useState<Record<string, string>>({});
+  const [netAdmins, setNetAdmins] = useState<Record<string, true>>({});
   const [memberRoles, setMemberRoles] = useState<Record<string, Record<string, true>>>({});
   const [categoryRoles, setCategoryRoles] = useState<RoleLists>({});
   const [channelRoles, setChannelRoles] = useState<RoleLists>({});
@@ -54,6 +57,7 @@ export function useCommunity(uid: string): CommunityData {
       watchRoles(setRoles),
       watchRoleDefs(setRoleDefs),
       watchAvatars(setAvatars),
+      watchNetAdmins(setNetAdmins),
       watchMemberRoles(setMemberRoles),
       watchCategoryRoles(setCategoryRoles),
       watchChannelRoles(setChannelRoles),
@@ -87,6 +91,7 @@ export function useCommunity(uid: string): CommunityData {
     roles,
     roleDefs,
     avatars,
+    netAdmins,
     memberRoles,
     categoryRoles,
     channelRoles,

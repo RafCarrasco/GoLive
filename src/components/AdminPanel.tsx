@@ -20,6 +20,7 @@ import {
   revokeMember,
   setAvatar,
   roleLabel,
+  isStaff,
   watchApprovedMembers,
   watchRequests,
   DEFAULT_CATEGORY_ID,
@@ -48,7 +49,9 @@ export function AdminPanel({
   onCreateChannel: (categoryId: string) => void;
 }) {
   const owner = data.roles[uid] === 'owner';
-  const [tab, setTab] = useState<Tab>(owner ? 'requests' : 'channels');
+  const staff = isStaff(data.roles[uid] || 'member');
+  const network = owner || Boolean(data.netAdmins[uid]);
+  const [tab, setTab] = useState<Tab>(owner ? 'requests' : staff ? 'channels' : 'network');
   const [requests, setRequests] = useState<Record<string, AccessRequest>>({});
   const [approved, setApproved] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState('');
@@ -79,10 +82,10 @@ export function AdminPanel({
   ];
   const tabs: Array<[Tab, string, number?]> = [
     ...(owner ? ([['requests', 'Solicitações', pending.length]] as Array<[Tab, string, number]>) : []),
-    ['members', 'Membros'],
+    ...(staff ? ([['members', 'Membros']] as Array<[Tab, string]>) : []),
     ...(owner ? ([['roles', 'Cargos']] as Array<[Tab, string]>) : []),
-    ['channels', 'Canais'],
-    ...(owner ? ([['network', 'Rede']] as Array<[Tab, string]>) : []),
+    ...(staff ? ([['channels', 'Canais']] as Array<[Tab, string]>) : []),
+    ...(network ? ([['network', 'Rede']] as Array<[Tab, string]>) : []),
   ];
   const roleEntries = Object.entries(data.roleDefs).sort((a, b) => a[1].createdAt - b[1].createdAt);
   const nextColor = ROLE_COLORS[roleEntries.length % ROLE_COLORS.length];
@@ -246,7 +249,7 @@ export function AdminPanel({
         </div>
       )}
 
-      {tab === 'network' && owner && <NetworkSettings />}
+      {tab === 'network' && network && <NetworkSettings uid={uid} owner={owner} data={data} />}
 
       {tab === 'roles' && (
         <div className="admin-list">

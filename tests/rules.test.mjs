@@ -211,7 +211,25 @@ describe('servidor de retransmissão', () => {
     await assertSucceeds(get(ref(member(), 'community/turn')));
     await assertFails(get(ref(pending(), 'community/turn')));
   });
+  test('quem o proprietário libera também configura a rede', async () => {
+    await assertFails(set(ref(member(), 'community/netAdmins/member'), true));
+    await assertSucceeds(set(ref(owner(), 'community/netAdmins/member'), true));
+    await assertSucceeds(set(ref(member(), 'community/turn'), { ...turn, monthlyLimitGb: 800 }));
+    await assertFails(set(ref(admin(), 'community/turn'), turn));
+    await assertSucceeds(remove(ref(owner(), 'community/netAdmins/member')));
+    await assertFails(set(ref(member(), 'community/turn'), turn));
+  });
+  test('contador de uso só cresce, com saltos limitados', async () => {
+    await assertSucceeds(set(ref(member(), 'community/turnUsage/2026-11'), 1000));
+    await assertSucceeds(set(ref(member(), 'community/turnUsage/2026-11'), 2000));
+    await assertFails(set(ref(member(), 'community/turnUsage/2026-11'), 500));
+    await assertFails(set(ref(member(), 'community/turnUsage/2026-11'), 2000 + 6e9));
+    await assertFails(set(ref(member(), 'community/turnUsage/novembro'), 10));
+    await assertFails(set(ref(pending(), 'community/turnUsage/2026-11'), 3000));
+    await assertSucceeds(get(ref(member(), 'community/turnUsage')));
+  });
   test('formato validado', async () => {
+    await assertFails(set(ref(owner(), 'community/turn'), { ...turn, monthlyLimitGb: 0 }));
     await assertFails(set(ref(owner(), 'community/turn'), { ...turn, urls: 'https://evil.example' }));
     await assertFails(set(ref(owner(), 'community/turn'), { ...turn, username: '' }));
     await assertFails(set(ref(owner(), 'community/turn'), { ...turn, extra: 1 }));

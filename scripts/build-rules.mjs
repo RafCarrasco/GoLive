@@ -200,9 +200,30 @@ const rules = {
       // Servidor de retransmissão (TURN) para quem não consegue conexão direta. Os dados ficam aqui,
       // fora do código: só o proprietário grava e só membros aprovados leem (o app precisa deles
       // para montar a conexão).
+      // Quem pode configurar a rede além do proprietário (o proprietário escolhe).
+      netAdmins: {
+        '.read': approved,
+        $uid: { '.write': approvedOwner, '.validate': 'newData.val() === true' },
+      },
+      // Uso do servidor de retransmissão por mês ("2026-11"), em bytes, somado pelos apps. Só cresce,
+      // e cada envio soma no máximo 5 GB: é a base da trava de gasto mensal.
+      turnUsage: {
+        '.read': approved,
+        $month: {
+          '.write': approved,
+          '.validate': and(
+            'newData.isNumber()',
+            "$month.matches(/^[0-9]{4}-[0-9]{2}$/)",
+            or(
+              and('!data.exists()', 'newData.val() >= 0', 'newData.val() <= 5000000000'),
+              and('data.exists()', 'newData.val() >= data.val()', 'newData.val() - data.val() <= 5000000000'),
+            ),
+          ),
+        },
+      },
       turn: {
         '.read': approved,
-        '.write': approvedOwner,
+        '.write': or(approvedOwner, and(approved, "root.child('community/netAdmins').child(auth.uid).val() === true")),
         '.validate': "newData.hasChildren(['urls','username','credential','updatedAt'])",
         urls: {
           '.validate': and(
@@ -215,6 +236,8 @@ const rules = {
         credential: { '.validate': and('newData.isString()', 'newData.val().length >= 1', 'newData.val().length <= 256') },
         updatedAt: { '.validate': 'newData.isNumber()' },
         expiresAt: { '.validate': 'newData.isNumber()' },
+        // Limite mensal em GB: ao chegar nele, os apps param de usar o servidor até virar o mês.
+        monthlyLimitGb: { '.validate': and('newData.isNumber()', 'newData.val() >= 1', 'newData.val() <= 100000') },
         ...noOtherFields,
       },
       // Foto de perfil, sem Firebase Storage: uma imagem pequena em texto (data URL, já reduzida

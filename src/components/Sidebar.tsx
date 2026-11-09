@@ -85,7 +85,7 @@ export function Sidebar({
       <header className="sidebar-head">
         <img className="brand-mark" src="/nimbo-icon-128.png" alt="" />
         <strong>Nimbo</strong>
-        {staff && (
+        {(staff || data.netAdmins[uid]) && (
           <button
             className={'icon-button' + (adminOpen ? ' on' : '')}
             aria-label="Gerenciar comunidade"

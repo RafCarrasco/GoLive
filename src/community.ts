@@ -1,4 +1,4 @@
-import { get, onValue, push, ref, remove, set, update } from 'firebase/database';
+import { get, onValue, push, ref, remove, runTransaction, set, update } from 'firebase/database';
 import { db } from './firebase';
 export type Category = { name: string; createdAt: number; createdBy: string; order: number };
 export const DEFAULT_CATEGORY_ID = 'lives';
@@ -111,7 +111,40 @@ export const watchChannels = (cb: (channels: Record<string, Channel>) => void) =
 export const watchProfiles = (cb: (profiles: Record<string, Profile>) => void) =>
   onValue(ref(db, 'community/profiles'), (s) => cb(s.val() || {}));
 // Servidor de retransmissão (TURN): endereços separados por vírgula, usuário, senha e validade.
-export type TurnConfig = { urls: string; username: string; credential: string; updatedAt: number; expiresAt?: number };
+export type TurnConfig = {
+  urls: string;
+  username: string;
+  credential: string;
+  updatedAt: number;
+  expiresAt?: number;
+  monthlyLimitGb?: number;
+};
+// Mês corrente (UTC) usado no contador de uso do servidor, ex.: "2026-11".
+export const usageMonth = () => new Date().toISOString().slice(0, 7);
+export const watchTurnUsage = (cb: (bytes: number) => void) =>
+  onValue(
+    ref(db, `community/turnUsage/${usageMonth()}`),
+    (s) => cb(Number(s.val()) || 0),
+    () => cb(0),
+  );
+export const loadTurnUsage = () =>
+  get(ref(db, `community/turnUsage/${usageMonth()}`)).then(
+    (s) => Number(s.val()) || 0,
+    () => 0,
+  );
+// Soma ao contador do mês (transação: vários apps somando ao mesmo tempo não se perdem).
+export const addTurnUsage = (bytes: number) =>
+  runTransaction(ref(db, `community/turnUsage/${usageMonth()}`), (v) => (Number(v) || 0) + Math.min(bytes, 5e9)).then(
+    () => undefined,
+  );
+export const watchNetAdmins = (cb: (ids: Record<string, true>) => void) =>
+  onValue(
+    ref(db, 'community/netAdmins'),
+    (s) => cb(s.val() || {}),
+    () => cb({}),
+  );
+export const setNetAdmin = (uid: string, on: boolean) =>
+  on ? set(ref(db, `community/netAdmins/${uid}`), true) : remove(ref(db, `community/netAdmins/${uid}`));
 export const watchTurn = (cb: (turn: TurnConfig | null) => void) =>
   onValue(
     ref(db, 'community/turn'),

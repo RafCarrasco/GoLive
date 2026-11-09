@@ -11,7 +11,7 @@ import {
   type Database,
 } from 'firebase/database';
 import { LEVELS, nextQuality, type QualityState } from './quality';
-import { loadTurn, type TurnConfig } from '../community';
+import { addTurnUsage, loadTurn, loadTurnUsage, type TurnConfig } from '../community';
 import type { StreamKind } from './capture';
 
 // Sinalização: rooms/{room}/signals/{destinatário}/{remetente}/{id}
@@ -267,7 +267,12 @@ export class LiveRoom {
   async join() {
     const members = (await get(this.path('members'))).val() as Record<string, unknown> | null;
     if (Object.keys(members || {}).length >= MAX_MEMBERS && !members?.[this.uid]) throw Error('Canal cheio');
-    this.ice = iceWith(await loadTurn());
+    // Trava de gasto: com o uso do mês no limite definido, o servidor de retransmissão fica de fora.
+    const [turn, usage] = await Promise.all([loadTurn(), loadTurnUsage()]);
+    const limit = (turn?.monthlyLimitGb || 0) * 1e9;
+    const capped = Boolean(limit) && usage >= limit;
+    if (capped) console.info('[nimbo] servidor de retransmissão no limite do mês; usando só conexão direta');
+    this.ice = iceWith(capped ? null : turn);
     await this.clearInbox();
     await this.registerPresence();
     this.joined = true;
@@ -311,7 +316,8 @@ export class LiveRoom {
     let wasOffline = false;
     const watchdog = setInterval(() => this.checkMissing(), 2000);
     const adapt = setInterval(() => void this.adaptQuality(), 3000);
-    this.unsubs.push(() => clearInterval(watchdog), () => clearInterval(adapt));
+    const relay = setInterval(() => void this.reportRelayUsage(), 60000);
+    this.unsubs.push(() => clearInterval(watchdog), () => clearInterval(adapt), () => clearInterval(relay));
     this.unsubs.push(
       onValue(ref(this.db, '.info/connected'), (snap) => {
         const connected = snap.val() === true;
@@ -521,6 +527,33 @@ export class LiveRoom {
     if (level.maxFps) encoding.maxFramerate = level.maxFps;
     else delete encoding.maxFramerate;
     await sender.setParameters(params).catch(() => {});
+  }
+
+  // Bytes já contados por conexão que passa pelo servidor de retransmissão.
+  private relayCounted = new WeakMap<RTCPeerConnection, number>();
+
+  // A cada minuto, soma ao contador do mês o que chegou por TURN (é o que o serviço cobra: dados
+  // saindo do servidor para cada app). Conexões diretas não contam.
+  private async reportRelayUsage() {
+    if (!this.joined || this.closed) return;
+    let total = 0;
+    for (const peer of this.peers.values()) {
+      const stats = await peer.pc.getStats().catch(() => null);
+      if (!stats) continue;
+      const byId = new Map<string, Record<string, unknown>>();
+      stats.forEach((r) => byId.set(r.id, r as Record<string, unknown>));
+      let received = 0;
+      stats.forEach((r: Record<string, unknown>) => {
+        if (r.type !== 'candidate-pair' || r.state !== 'succeeded') return;
+        const local = byId.get(r.localCandidateId as string);
+        if (local?.candidateType === 'relay') received += Number(r.bytesReceived || 0);
+      });
+      if (!received) continue;
+      const before = this.relayCounted.get(peer.pc) || 0;
+      if (received > before) total += received - before;
+      this.relayCounted.set(peer.pc, received);
+    }
+    if (total > 0) await addTurnUsage(total).catch(() => {});
   }
 
   // A cada 3 s, mede cada envio de vídeo (perda relatada por quem assiste e se falta banda) e
