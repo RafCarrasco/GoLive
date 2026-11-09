@@ -35,6 +35,14 @@ vez a cada 45 s; nesse intervalo a live fica em "Conectando". Ideia: nos primeir
 entrar no canal, considerar a live presa com ~6 s e permitir a primeira reconexão sem esperar os
 45 s; depois disso volta aos tempos atuais (para não ficar reconectando em rede ruim).
 
+### Servidor de retransmissão (TURN) pendente de configurar (adiado em 09/11/2026)
+O app já está pronto (aba Rede: credencial testada antes de salvar, limite mensal padrão 800 GB,
+quem pode configurar). Falta o dono: cadastrar cartão na Cloudflare (Realtime → TURN Server →
+Get Started; US$ 0 agora, 1.000 GB grátis/mês), criar alerta em Billing → Notifications, criar o
+TURN "Nimbo", gerar a credencial (comando PowerShell com `generate-ice-servers`, ttl 2592000) e
+colar na aba Rede; liberar o Guilherme. Ficou parado porque o código de verificação do cartão (Link)
+não chegou. Caso para isso: amigos na mesma casa (Mie e irmão) com NAT que bloqueia conexão direta.
+
 ## App e atualizações
 
 ### ~~Selo "Atualização disponível" no topo~~ (feito na 0.3.4, 02/11/2026)
