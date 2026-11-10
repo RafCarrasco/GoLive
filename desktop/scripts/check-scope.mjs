@@ -1,5 +1,5 @@
-// Approved checkpoints 1–2 only: every existing base blob stays immutable.
-// Rust additions do not authorize legacy edits, workflows or shared manifest edits.
+// Approved checkpoints 1–2: base blobs stay immutable except the exact manual
+// Windows diagnostic below. No other workflow, legacy or shared manifest edits.
 import { execFileSync } from 'node:child_process';
 import { readFileSync, lstatSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -8,6 +8,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const BASE = '3c16cbbf2a4e6fcd5ce2274bafb3a3a73c4ad6eb';
+// Exact Git blob allowlist, not a path/regex/YAML-key bypass. Any changed byte,
+// including commands hidden in multiline scalars, requires separate approval.
+export const WINDOWS_DIAGNOSTIC = Object.freeze({
+  path: '.github/workflows/windows.yml',
+  oid: '23a8e22cd0a421cf2fde97267556b872e7319bbd',
+});
+const approvedDiagnostic = (name, oid) => name === WINDOWS_DIAGNOSTIC.path && oid === WINDOWS_DIAGNOSTIC.oid;
 const git = (root, ...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
 export function enumerateBase(root) {
   return git(root, 'ls-tree', '-rz', BASE).split('\0').filter(Boolean).map((entry) => {
@@ -46,7 +53,7 @@ export function checkScope(root) {
   }));
   for (const blob of blobs) {
     const staged = index.get(blob.path);
-    if (!staged || staged.stage !== '0' || staged.mode !== blob.mode || staged.oid !== blob.oid) {
+    if (!staged || staged.stage !== '0' || staged.mode !== blob.mode || (staged.oid !== blob.oid && !approvedDiagnostic(blob.path, staged.oid))) {
       violations.push(`${blob.path}: immutable base blob/mode changed in index`);
     }
     const file = path.join(root, blob.path);
@@ -56,7 +63,7 @@ export function checkScope(root) {
       const bytes = readFileSync(file);
       const oid = createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
       const mode = stat.mode & 0o111 ? '100755' : '100644';
-      if (oid !== blob.oid || mode !== blob.mode) violations.push(`${blob.path}: immutable base blob/mode changed`);
+      if ((oid !== blob.oid && !approvedDiagnostic(blob.path, oid)) || mode !== blob.mode) violations.push(`${blob.path}: immutable base blob/mode changed`);
     } catch (error) {
       violations.push(`${blob.path}: missing/unreadable (${error.code || error.message})`);
     }
@@ -92,6 +99,6 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     const root = args.length ? path.resolve(args[1]) : fileURLToPath(new URL('../../', import.meta.url));
     const violations = checkScope(root);
     if (violations.length) { console.error(violations.join('\n')); process.exitCode = 1; }
-    else console.log(`CHECKPOINT_2_SCOPE_OK base=${BASE} immutable_blobs=${enumerateBase(root).length}`);
+    else console.log(`CHECKPOINT_2_SCOPE_OK base=${BASE} base_blobs=${enumerateBase(root).length} exact_diagnostic_exception=${WINDOWS_DIAGNOSTIC.path}@${WINDOWS_DIAGNOSTIC.oid}`);
   } catch (error) { console.error(error.message); process.exitCode = 1; }
 }

@@ -1,25 +1,63 @@
-name: Windows portable
-# Só manual: gera o executável como artifact. Releases não são publicadas automaticamente.
+name: Nimbo Rust Windows DIAGNOSTIC not capture
 on:
   workflow_dispatch:
+permissions:
+  contents: read
 jobs:
-  build:
+  diagnostic:
     runs-on: windows-latest
-    permissions:
-      contents: read
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
         with:
-          node-version: '22'
-      - run: npm install
-      - run: npm run desktop:pack
+          persist-credentials: false
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
+      - name: Check Rust formatting
+        run: cargo +1.99.1 fmt --manifest-path desktop/rust/Cargo.toml --all -- --check
+      - name: Lint locked Rust targets
+        run: cargo +1.99.1 clippy --manifest-path desktop/rust/Cargo.toml --locked --all-targets -- -D warnings
+      - name: Test locked Rust crate on Windows
+        run: cargo +1.99.1 test --manifest-path desktop/rust/Cargo.toml --locked
+      - name: Link release diagnostic only
+        run: cargo +1.99.1 build --manifest-path desktop/rust/Cargo.toml --locked --release
+      - name: Collect diagnostic without executing it
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $output = 'diagnostic-windows'
+          New-Item -ItemType Directory -Path $output | Out-Null
+          $binary = Join-Path $output 'nimbo-rust-windows-DIAGNOSTIC-not-capture.exe'
+          Copy-Item 'desktop/rust/target/release/nimbo-desktop.exe' $binary
+          $metadata = [ordered]@{
+            commit = $env:GITHUB_SHA
+            sha256 = (Get-FileHash $binary -Algorithm SHA256).Hash.ToLowerInvariant()
+            size_bytes = (Get-Item $binary).Length
+            binary = (Split-Path $binary -Leaf)
+            toolchain = '1.99.1'
+            runner = $env:RUNNER_OS
+            run_id = $env:GITHUB_RUN_ID
+            run_attempt = $env:GITHUB_RUN_ATTEMPT
+          }
+          $metadata | ConvertTo-Json | Set-Content (Join-Path $output 'metadata.json') -Encoding utf8
+          @'
+          Nimbo Rust Windows DIAGNOSTIC - NOT CAPTURE - NOT AN INSTALLER
+
+          No GUI, real capture, audio, login or installer is implemented.
+          This diagnostic verifies native linking/API probe only, not media functionality.
+          CI builds and tests the crate but does not execute this diagnostic executable.
+          WebView2 detection differences are not capture proof.
+          Runtime API probe results require a separate observed Windows execution.
+          The current diagnostic intentionally returns exit 2 (RETURN), or 1 on probe failure.
+          Do not use this as a Nimbo installer or replace an existing installation.
+          No release, production upload, signing, deployment or update is performed.
+          metadata.json records the commit, SHA256 and binary size in bytes.
+          '@ | Set-Content (Join-Path $output 'README.txt') -Encoding utf8
       - uses: actions/upload-artifact@v4
         with:
-          name: Nimbo-Windows-Setup
-          path: |
-            release/Nimbo-Setup.exe
-            release/Nimbo-Setup.exe.blockmap
-            release/latest.yml
+          name: Nimbo-Rust-Windows-DIAGNOSTIC-not-capture
+          path: diagnostic-windows/
           if-no-files-found: error
-
+          retention-days: 7

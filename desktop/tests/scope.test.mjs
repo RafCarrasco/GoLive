@@ -127,3 +127,40 @@ test('checkpoint 1 pins entire lockfile, including web transitive graph', (t) =>
   put(dir, 'package.json', JSON.stringify(pkg));
   assert.ok(checkScope(dir).some((v) => v.includes('package.json')), 'even permitted future desktop edits require a later checkpoint');
 });
+
+test('only exact approved Windows diagnostic bytes are admitted in worktree and index', (t) => {
+  const dir = fixture(t);
+  const name = '.github/workflows/windows.yml';
+  const approved = readFileSync(path.join(root, name), 'utf8');
+  put(dir, name, approved);
+  assert.deepEqual(checkScope(dir), []);
+  git(dir, 'add', '--', name);
+  assert.deepEqual(checkScope(dir), []);
+  for (const changed of [
+    approved.replace('workflow_dispatch:', 'push:'),
+    approved.replace('contents: read', 'contents: write'),
+    approved.replace('1.99.1', 'stable'),
+    approved.replace('cargo +1.99.1 test', 'npm run desktop:pack'),
+    approved.replace("          $ErrorActionPreference = 'Stop'", "          $ErrorActionPreference = 'Stop'\n          gh release create forbidden"),
+    approved + '\n  hidden:\n    runs-on: windows-latest\n    steps:\n      - run: |\n          npm run desktop:pack\n',
+    approved + '\nenv:\n  TOKEN: ${{ secrets.FORBIDDEN }}\n',
+    approved + '\n# even an unapproved comment is outside the exact exception\n',
+  ]) {
+    put(dir, name, changed);
+    assert.ok(checkScope(dir).some((v) => v.includes(name)), 'reject unapproved workflow bytes');
+    git(dir, 'add', '--', name);
+    put(dir, name, approved);
+    assert.ok(checkScope(dir).some((v) => v.includes(name) && v.includes('index')), 'restoring worktree cannot hide staged commands');
+    git(dir, 'add', '--', name);
+  }
+  for (const forbidden of ['src/desktop.ts', '.github/workflows/community-check.yml', '.github/workflows/diagnostic-copy.yml']) {
+    const file = path.join(dir, forbidden);
+    const original = forbidden.endsWith('diagnostic-copy.yml') ? null : readFileSync(file);
+    put(dir, forbidden, approved);
+    assert.ok(checkScope(dir).some((v) => v.includes(forbidden)), 'approved bytes never authorize another path');
+    if (original) writeFileSync(file, original);
+    else unlinkSync(file);
+  }
+  chmodSync(path.join(dir, name), 0o755);
+  assert.ok(checkScope(dir).some((v) => v.includes(name)), 'exception never permits mode changes');
+});
