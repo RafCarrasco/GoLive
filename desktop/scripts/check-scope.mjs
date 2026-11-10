@@ -1,5 +1,5 @@
-// Checkpoint 1 deliberately grants less than the later migration allowlist:
-// every existing blob is immutable; only desktop test/harness additions are allowed.
+// Approved checkpoints 1–2 only: every existing base blob stays immutable.
+// Rust additions do not authorize legacy edits, workflows or shared manifest edits.
 import { execFileSync } from 'node:child_process';
 import { readFileSync, lstatSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -67,8 +67,8 @@ export function checkScope(root) {
   const current = git(root, 'ls-files', '-z', '--cached', '--others', '--exclude-standard').split('\0').filter(Boolean);
   for (const name of new Set(current)) {
     if (basePaths.has(name)) continue;
-    if (!/^(desktop\/tests\/|desktop\/scripts\/)/.test(name)) {
-      violations.push(`${name}: unauthorized new path for checkpoint 1`);
+    if (!/^(desktop\/tests\/|desktop\/scripts\/|desktop\/rust\/)/.test(name)) {
+      violations.push(`${name}: unauthorized new path for checkpoints 1–2`);
       continue;
     }
     try {
@@ -92,6 +92,6 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     const root = args.length ? path.resolve(args[1]) : fileURLToPath(new URL('../../', import.meta.url));
     const violations = checkScope(root);
     if (violations.length) { console.error(violations.join('\n')); process.exitCode = 1; }
-    else console.log(`CHECKPOINT_1_SCOPE_OK base=${BASE} immutable_blobs=${enumerateBase(root).length}`);
+    else console.log(`CHECKPOINT_2_SCOPE_OK base=${BASE} immutable_blobs=${enumerateBase(root).length}`);
   } catch (error) { console.error(error.message); process.exitCode = 1; }
 }

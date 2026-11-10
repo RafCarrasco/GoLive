@@ -52,12 +52,16 @@ test('complement rejects modifications/deletions/mode changes, not just named we
   assert.ok(checkScope(dir).some((v) => v.includes('README.md')));
 });
 
-test('only checkpoint-1 new test/script paths allowed; tracked and untracked additions checked', (t) => {
+test('checkpoint-2 allows only new Rust/test/script paths; tracked and untracked additions checked', (t) => {
   const dir = fixture(t);
   put(dir, 'desktop/tests/ok.mjs', 'test fixture');
   put(dir, 'desktop/scripts/ok.mjs', 'script fixture');
+  put(dir, 'desktop/rust/Cargo.toml', 'native crate fixture');
+  put(dir, 'desktop/rust/src/policy.rs', 'native policy fixture');
   assert.deepEqual(checkScope(dir), []);
-  for (const name of ['src/new.ts', 'new-root.mjs', 'desktop/rust/Cargo.toml', '.github/workflows/desktop-check.yml', 'desktop/tests-escape/bad.mjs']) {
+  git(dir, 'add', '--', 'desktop/rust');
+  assert.deepEqual(checkScope(dir), [], 'staged Rust additions are authorized too');
+  for (const name of ['src/new.ts', 'new-root.mjs', 'desktop/rust-escape/Cargo.toml', 'desktop/native/new.rs', '.github/workflows/desktop-check.yml', 'desktop/tests-escape/bad.mjs']) {
     put(dir, name, 'unauthorized fixture');
     assert.ok(checkScope(dir).some((v) => v.includes(name)), name);
     git(dir, 'add', '--', name);
