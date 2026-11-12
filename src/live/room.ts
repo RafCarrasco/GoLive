@@ -11,6 +11,7 @@ import {
   type Database,
 } from 'firebase/database';
 import { LEVELS, nextQuality, type QualityState } from './quality';
+import { hardwareH264, MAX_HARDWARE_SENDERS, preferH264 } from './hwcodec';
 import { addTurnUsage, loadTurn, loadTurnUsage, type TurnConfig } from '../community';
 import type { StreamKind } from './capture';
 
@@ -73,6 +74,7 @@ export type PeerDiagnostics = {
   remoteCandidates: string;
   pairs: string;
   iceRestarts: number;
+  encoder: string;
 };
 
 type Peer = {
@@ -87,6 +89,8 @@ type Peer = {
   checkingSince: number;
   iceRestarts: number;
   lastIceRestart: number;
+  // Envios de vídeo que preferem o codificador da placa de vídeo.
+  hardware: Set<RTCRtpTransceiver>;
 };
 
 type LocalLive = {
@@ -436,6 +440,7 @@ export class LiveRoom {
       checkingSince: 0,
       iceRestarts: 0,
       lastIceRestart: 0,
+      hardware: new Set(),
     };
     this.peers.set(id, peer);
     pc.onnegotiationneeded = async () => {
@@ -497,16 +502,25 @@ export class LiveRoom {
       if (existing) {
         if (existing.sender.track !== track) void existing.sender.replaceTrack(track).catch(() => {});
         if (track && live && trackKind === 'video') void this.applyQuality(existing.sender, live.bitrate);
-      } else if (track && live)
-        transceivers.push(
-          peer.pc.addTransceiver(track, {
-            direction: 'sendonly',
-            streams: [live.announced],
-            sendEncodings: trackKind === 'video' ? [{ maxBitrate: live.bitrate }] : undefined,
-          }),
-        );
+      } else if (track && live) {
+        const added = peer.pc.addTransceiver(track, {
+          direction: 'sendonly',
+          streams: [live.announced],
+          sendEncodings: trackKind === 'video' ? [{ maxBitrate: live.bitrate }] : undefined,
+        });
+        if (trackKind === 'video' && this.hardware && this.hardwareSenders() < MAX_HARDWARE_SENDERS && preferH264(added))
+          peer.hardware.add(added);
+        transceivers.push(added);
+      }
     }
     if (transceivers.length) peer.transceivers[kind] = transceivers;
+  }
+
+  // Envios de vídeo que hoje preferem o codificador da placa de vídeo, somando todas as conexões.
+  private hardwareSenders() {
+    let n = 0;
+    for (const peer of this.peers.values()) n += peer.hardware.size;
+    return n;
   }
 
   // Aplica no envio o nível de qualidade atual desta conexão sobre o bitrate escolhido.
@@ -531,6 +545,8 @@ export class LiveRoom {
 
   // Bytes já contados por conexão que passa pelo servidor de retransmissão.
   private relayCounted = new WeakMap<RTCPeerConnection, number>();
+  // A máquina codifica H.264 pela placa de vídeo (descoberto ao abrir a primeira live).
+  private hardware = false;
 
   // A cada minuto, soma ao contador do mês o que chegou por TURN (é o que o serviço cobra: dados
   // saindo do servidor para cada app). Conexões diretas não contam.
@@ -713,6 +729,7 @@ export class LiveRoom {
         const localTypes = new Set<string>();
         const remoteTypes = new Set<string>();
         const pairs: Record<string, number> = {};
+        const encoders = new Set<string>();
         stats.forEach((r: Record<string, unknown>) => {
           if (r.type === 'local-candidate') localTypes.add(`${r.candidateType}/${r.protocol}`);
           if (r.type === 'remote-candidate') remoteTypes.add(`${r.candidateType}/${r.protocol}`);
@@ -728,7 +745,10 @@ export class LiveRoom {
             videoBytesIn += Number(r.bytesReceived || 0);
             framesIn += Number(r.framesDecoded || 0);
           }
-          if (r.kind === 'video' && r.type === 'outbound-rtp') videoBytesOut += Number(r.bytesSent || 0);
+          if (r.kind === 'video' && r.type === 'outbound-rtp') {
+            videoBytesOut += Number(r.bytesSent || 0);
+            if (r.encoderImplementation) encoders.add(`${String(r.encoderImplementation).slice(0, 40)}${r.powerEfficientEncoder ? ' (placa de vídeo)' : ''}`);
+          }
         });
         return {
           peer: id.slice(0, 5),
@@ -743,6 +763,7 @@ export class LiveRoom {
           remoteCandidates: [...remoteTypes].join(' ') || 'nenhum',
           pairs: Object.entries(pairs).map(([k, v]) => `${k}:${v}`).join(' ') || 'nenhum',
           iceRestarts: this.peers.get(id)?.iceRestarts || 0,
+          encoder: [...encoders].join(', ') || 'nenhum',
         };
       }),
     );
@@ -752,6 +773,9 @@ export class LiveRoom {
     if (this.locals.has(kind)) await this.stopBroadcast(kind);
     let announced = this.announced.get(kind);
     if (!announced) this.announced.set(kind, (announced = new MediaStream()));
+    // Com a captura já ativa, descobre se dá para codificar pela placa de vídeo (ver hwcodec.ts).
+    // A resposta fica guardada: só a primeira live da semana espera o teste (até ~4 s).
+    this.hardware = await hardwareH264();
     this.locals.set(kind, { stream, announced, bitrate, startedAt: Date.now() });
     this.watchEnded(stream, kind);
     try {
