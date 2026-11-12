@@ -10,6 +10,18 @@ app atual faz. Este documento diz o que muda, o que ganha e em que ordem.
 | App atual, padrão (VP8) | software | 480x270 | ~3% |
 | App atual com H.264 da placa de vídeo | NVIDIA | 1280x720 | ~3% |
 
+Primeira versão do motor em Rust (`desktop/rust-media`, etapas 1 e 2), mesma cena, tela 1920x1080:
+
+| Medida | Rust | App atual (Electron, H.264 da placa) |
+|---|---|---|
+| Só captura | 48 quadros/s, ~0% de CPU | não medido separado |
+| Captura + H.264 pela placa, 8 Mbps | 48 quadros/s em 1920x1080, 4% a 25% de um núcleo (3 rodadas) | 48 quadros/s em 1280x720, ~3% de um núcleo |
+| Tamanho do executável | 0,4 MB | ~100 MB (instalador) |
+
+Os 48 quadros/s são o limite da cena de teste, não do capturador. O Rust manteve 1080p cheio, mas
+**ainda não gasta menos CPU que o Electron**: o codificador usado nesta etapa (MediaTranscoder do
+Windows) converte cor na CPU. Trocar por Media Foundation direto na textura da GPU é parte da etapa 2.
+
 Conclusões:
 
 1. Em máquina forte o CPU não é o gargalo; a qualidade por megabit é. O H.264 pela placa de vídeo
