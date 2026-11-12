@@ -1,0 +1,14 @@
+[package]
+name = "nimbo-media"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Nimbo native media engine (capture, encode, send). Experimental."
+
+[dependencies]
+windows-capture = "2.0.1"
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Threading"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
