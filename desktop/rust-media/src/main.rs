@@ -1,10 +1,13 @@
 //! Etapas 1 e 2 do plano (docs/rust-app.md): captura nativa da tela e codificação H.264 pela
-//! placa de vídeo, com números. O modo serve (etapas 3 e 4) envia por WebRTC.
+//! placa de vídeo, com números. O modo serve envia por WebRTC; hw mede a codificação direto na GPU.
 //!
 //!   nimbo-media capture [segundos]            mede quadros por segundo e CPU só da captura
 //!   nimbo-media encode  [segundos] [arquivo]  captura + codifica em H.264 para um .mp4
 //!   nimbo-media serve   [porta]               envia a tela por WebRTC para navegadores
+//!   nimbo-media hw [s] [largura] [altura] [fps] codifica pela placa direto na GPU e mede
 
+mod hw;
+mod hwbench;
 mod serve;
 
 use std::time::{Duration, Instant};
@@ -143,6 +146,9 @@ fn main() -> Result<(), AnyError> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mode = args.first().map(String::as_str).unwrap_or("capture");
     let seconds = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(10);
+    if mode == "hw" {
+        return hwbench::run(&args);
+    }
     if mode == "serve" {
         return serve::run(args.get(1).and_then(|s| s.parse().ok()).unwrap_or(3070));
     }

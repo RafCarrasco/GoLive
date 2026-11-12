@@ -5,6 +5,7 @@
   <video id="v" autoplay muted playsinline style="width:100vw;max-height:90vh;background:#000"></video>
   <pre id="s" style="margin:8px">conectando...</pre>
   <script>
+    window.nimboStats = { estado: 'iniciando' };
     (async () => {
       const pc = new RTCPeerConnection();
       pc.addTransceiver('video', { direction: 'recvonly' });
@@ -34,6 +35,9 @@
         window.nimboStats = o;
         document.getElementById('s').textContent = JSON.stringify(o);
       }, 1000);
-    })();
+    })().catch((e) => {
+      window.nimboStats = { erro: String(e) };
+      document.getElementById('s').textContent = String(e);
+    });
   </script>
 </body>
