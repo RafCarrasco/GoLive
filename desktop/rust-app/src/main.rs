@@ -8,12 +8,14 @@
 //! - `NIMBO_DATA_DIR`: pasta dos dados do WebView2 (cookies, login) no lugar da padrão.
 //! - `NIMBO_LOGIN_PRINT`: escreve o link de login no stdout em vez de abrir o navegador.
 //! - `NIMBO_SELFTEST=<arquivo>`: confere a ponte com o site carregado e fecha (ver `selftest.rs`).
+//! - `NIMBO_SELFTEST_SCRIPT=<arquivo .js>`: com a anterior, roda esse roteiro no lugar da conferência.
 
 // Sem janela de console atrás do app instalado.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod bridge;
 mod login;
+mod media;
 mod selftest;
 
 use std::path::PathBuf;
@@ -68,9 +70,14 @@ fn main() -> ExitCode {
             focus_main(app);
         }))
         .manage(shell)
+        .manage(media::Media::default())
         .invoke_handler(tauri::generate_handler![
             bridge::sign_in,
-            bridge::cancel_sign_in
+            bridge::cancel_sign_in,
+            media::media_start,
+            media::media_accept,
+            media::media_close,
+            media::media_stop
         ])
         .setup(|app| {
             open_main_window(app.handle())?;
@@ -100,7 +107,11 @@ fn open_main_window(app: &AppHandle) -> tauri::Result<()> {
             .remote(origin.ascii_serialization())
             .window(MAIN_WINDOW)
             .permission("allow-sign-in")
-            .permission("allow-cancel-sign-in"),
+            .permission("allow-cancel-sign-in")
+            .permission("allow-media-start")
+            .permission("allow-media-accept")
+            .permission("allow-media-close")
+            .permission("allow-media-stop"),
     )?;
 
     let selftest = selftest::requested();

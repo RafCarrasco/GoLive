@@ -7,7 +7,7 @@
   if (window.top !== window.self || location.origin !== __NIMBO_APP_ORIGIN__) return;
 
   // Procura o invoke só na hora da chamada: não depende da ordem dos scripts de inicialização.
-  const invoke = (command) => window.__TAURI_INTERNALS__.invoke(command);
+  const invoke = (command, args) => window.__TAURI_INTERNALS__.invoke(command, args);
   const unavailable = () => Promise.resolve({ ok: false, error: 'Ainda não disponível no app em Rust.' });
   // Registro de ouvinte que nunca dispara: devolve o "cancelar" que o site espera receber.
   const neverFires = () => () => {};
@@ -28,6 +28,13 @@
     onGameState: neverFires,
     onGameEnded: neverFires,
     onAudio: neverFires,
+    // Motor de mídia do app: captura, codifica uma vez e envia para todos (src/live/native.ts).
+    media: Object.freeze({
+      start: (source, quality) => invoke('media_start', { source, quality }),
+      accept: (offer) => invoke('media_accept', { offer }),
+      close: (id) => invoke('media_close', { id }),
+      stop: () => invoke('media_stop'),
+    }),
   };
 
   // Congelada e fixa como a do contextBridge do Electron: a página usa, não troca.

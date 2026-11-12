@@ -104,7 +104,19 @@ pub fn page_loaded(window: &WebviewWindow, url: &str, report: &Path) {
     record(report, &format!("loaded {url}"));
     // Com NIMBO_LOGIN_PRINT o teste também percorre o login (o link sai no stdout, sem navegador).
     let with_login = std::env::var_os("NIMBO_LOGIN_PRINT").is_some();
-    let script = SCRIPT.replace("WITH_LOGIN", if with_login { "true" } else { "false" });
+    let builtin = SCRIPT.replace("WITH_LOGIN", if with_login { "true" } else { "false" });
+    // NIMBO_SELFTEST_SCRIPT=<arquivo .js>: roda um roteiro próprio no lugar da conferência padrão
+    // (por exemplo, abrir uma live). O roteiro relata do mesmo jeito, pelo título da página.
+    let script = match std::env::var_os("NIMBO_SELFTEST_SCRIPT").filter(|p| !p.is_empty()) {
+        Some(path) => match std::fs::read_to_string(&path) {
+            Ok(custom) => custom,
+            Err(e) => {
+                record(report, &format!("script failed: {e}"));
+                return;
+            }
+        },
+        None => builtin,
+    };
     if let Err(e) = window.eval(script) {
         record(report, &format!("eval failed: {e}"));
     }

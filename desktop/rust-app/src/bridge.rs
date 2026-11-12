@@ -84,8 +84,19 @@ pub struct Reply<T> {
     error: Option<String>,
 }
 
+impl Reply<()> {
+    /// Deu certo e não há o que devolver.
+    pub fn done() -> Self {
+        Self {
+            ok: true,
+            value: None,
+            error: None,
+        }
+    }
+}
+
 impl<T> Reply<T> {
-    fn ok(value: T) -> Self {
+    pub fn ok(value: T) -> Self {
         Self {
             ok: true,
             value: Some(value),
@@ -93,7 +104,7 @@ impl<T> Reply<T> {
         }
     }
 
-    fn error(message: impl Into<String>) -> Self {
+    pub fn error(message: impl Into<String>) -> Self {
         Self {
             ok: false,
             value: None,
@@ -290,6 +301,8 @@ mod tests {
             "{expected:?}"
         );
         assert!(expected.insert("engine"));
+        // O motor de mídia só existe no app em Rust (ver media.rs).
+        assert!(expected.insert("media"));
         assert_eq!(keys(object, "    "), expected);
 
         // Mesma versão de contrato que o Electron expõe.
