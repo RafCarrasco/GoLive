@@ -13,16 +13,28 @@ import {
 import { LEVELS, nextQuality, type QualityState } from './quality';
 import { hardwareH264, MAX_HARDWARE_SENDERS, preferH264 } from './hwcodec';
 import { addTurnUsage, loadTurn, loadTurnUsage, type TurnConfig } from '../community';
+import {
+  answerNative,
+  isNativeLive,
+  nativeMedia,
+  NativeReceiver,
+  releaseNativePreview,
+  stopNative,
+  type NativeSignal,
+} from './native';
 import type { StreamKind } from './capture';
 
 // Sinalização: rooms/{room}/signals/{destinatário}/{remetente}/{id}
 type Signal =
   | { type: 'offer' | 'answer'; sdp: RTCSessionDescriptionInit }
-  | { type: 'ice'; candidate: RTCIceCandidateInit };
+  | { type: 'ice'; candidate: RTCIceCandidateInit }
+  // Live enviada pelo motor em Rust do app: oferta de quem assiste e resposta do motor (native.ts).
+  | NativeSignal;
 
 // Cada pessoa pode ter até duas lives: tela e câmera. streamId é o id do MediaStream anunciado na
 // negociação; é como quem assiste sabe qual stream recebido é a tela e qual é a câmera.
-export type Broadcast = { startedAt: number; streamId: string };
+// native: a live é enviada pelo motor do app; quem assiste abre uma conexão própria (native.ts).
+export type Broadcast = { startedAt: number; streamId: string; native?: boolean };
 export type Broadcasts = Record<string, Partial<Record<StreamKind, Broadcast>>>;
 export const STREAM_KINDS: StreamKind[] = ['screen', 'camera'];
 
@@ -229,6 +241,14 @@ export class LiveRoom {
   // Quando esta sessão entrou no canal (ou reconectou): nos primeiros 30 s a live presa é
   // percebida mais cedo, porque é aí que a conexão com quem transmite está sendo refeita.
   private sessionStart = 0;
+  // Lives nativas que chegam (lado de quem assiste) e conexões abertas no motor para quem nos
+  // assiste (lado de quem transmite), por "participante:tipo".
+  private nativeIn = new NativeReceiver({
+    ice: () => this.ice,
+    send: (to, msg) => this.send(to, msg),
+    onChange: () => this.emit(),
+  });
+  private nativeOut = new Map<string, number>();
 
   constructor(
     private db: Database,
@@ -257,12 +277,19 @@ export class LiveRoom {
       members: this.members,
       broadcasts: this.broadcasts,
       local: Object.fromEntries([...this.locals].map(([kind, live]) => [kind, live.stream])),
-      remote: Object.fromEntries(Object.entries(this.remote).map(([id, streams]) => [id, { ...streams }])),
+      remote: this.allRemote(),
       failed: [...this.failed],
       connecting: [...this.peers.entries()]
         .filter(([, p]) => p.pc.connectionState !== 'connected' && p.pc.connectionState !== 'failed')
         .map(([id]) => id),
     };
+  }
+  // Streams recebidos pelo navegador e pelas conexões com motores nativos, juntos.
+  private allRemote() {
+    const all: Record<string, Record<string, MediaStream>> = {};
+    for (const [id, streams] of Object.entries(this.remote)) all[id] = { ...streams };
+    for (const [id, streams] of Object.entries(this.nativeIn.streams())) all[id] = { ...all[id], ...streams };
+    return all;
   }
   private emit() {
     if (!this.closed) this.onChange(this.snapshot());
@@ -313,6 +340,7 @@ export class LiveRoom {
     await set(this.path(`streams/${this.uid}/${kind}`), {
       startedAt: live.startedAt,
       streamId: live.announced.id,
+      ...(isNativeLive(live.stream) ? { native: true } : {}),
     });
   }
 
@@ -374,8 +402,11 @@ export class LiveRoom {
     const present = new Set(ids);
     for (const id of [...this.peers.keys()]) if (!present.has(id)) this.closePeer(id);
     for (const id of [...this.failed]) if (!present.has(id)) this.failed.delete(id);
+    this.closeNativeOut((uid) => !present.has(uid));
+    this.nativeIn.sync(this.broadcasts, ids, this.uid);
     // Quem transmite inicia a conexão com quem chega; quem só assiste espera a oferta.
-    if (this.locals.size) for (const id of ids) if (id !== this.uid) this.ensurePeer(id);
+    if ([...this.locals.values()].some((live) => !isNativeLive(live.stream)))
+      for (const id of ids) if (id !== this.uid) this.ensurePeer(id);
     // Sinais que chegaram antes da lista de membros ficam guardados até aqui.
     if (firstLoad && this.pendingInbox) this.onInbox(this.pendingInbox);
     this.emit();
@@ -386,6 +417,7 @@ export class LiveRoom {
     // As faixas remotas não são descartadas aqui: elas podem chegar antes do registro da live.
     // A interface só exibe quem está em broadcasts, e o removetrack/closePeer limpa o resto.
     this.broadcasts = next;
+    this.nativeIn.sync(next, this.members, this.uid);
     this.emit();
   }
 
@@ -411,6 +443,12 @@ export class LiveRoom {
           void discard();
           continue;
         }
+        if ('native' in msg) {
+          void this.handleNative(sender, msg)
+            .catch((e) => console.warn('[nimbo] sinal do app', sender, e))
+            .finally(() => void discard());
+          continue;
+        }
         const peer = this.ensurePeer(sender);
         // Uma fila por participante: oferta, resposta e candidatos são aplicados na ordem de chegada.
         peer.queue = peer.queue
@@ -418,6 +456,29 @@ export class LiveRoom {
           .catch((e) => console.warn('[nimbo] sinal', sender, e))
           .finally(() => void discard());
       }
+  }
+
+  // Oferta de quem quer assistir a nossa live nativa, ou resposta do motor de quem assistimos.
+  private async handleNative(sender: string, msg: NativeSignal) {
+    if (msg.type === 'answer') return this.nativeIn.onAnswer(sender, msg.native, msg.sdp);
+    const live = this.locals.get(msg.native);
+    if (!live || !isNativeLive(live.stream)) return;
+    const key = sender + ':' + msg.native;
+    const previous = this.nativeOut.get(key);
+    if (previous !== undefined) void nativeMedia?.close(previous);
+    const { id, answer } = await answerNative(msg.sdp);
+    this.nativeOut.set(key, id);
+    await this.send(sender, { type: 'answer', sdp: answer, native: msg.native });
+  }
+
+  // Fecha no motor as conexões de quem nos assistia (um participante, um tipo de live, ou todos).
+  private closeNativeOut(match: (uid: string, kind: string) => boolean) {
+    for (const [key, id] of [...this.nativeOut]) {
+      const i = key.lastIndexOf(':');
+      if (!match(key.slice(0, i), key.slice(i + 1))) continue;
+      this.nativeOut.delete(key);
+      void nativeMedia?.close(id);
+    }
   }
 
   private send(to: string, msg: Signal) {
@@ -491,7 +552,9 @@ export class LiveRoom {
   // Desmontar (transceiver.stop) podia mudar o transporte da conexão inteira e congelar também as
   // lives que chegam pela mesma conexão.
   private syncSenders(peer: Peer, kind: StreamKind) {
-    const live = this.locals.get(kind);
+    // Live nativa não passa pelo navegador: aqui ela conta como "sem faixas para enviar".
+    const local = this.locals.get(kind);
+    const live = local && !isNativeLive(local.stream) ? local : undefined;
     const transceivers = peer.transceivers[kind] || [];
     for (const trackKind of ['video', 'audio'] as const) {
       let track = live?.stream.getTracks().find((t) => t.kind === trackKind) || null;
@@ -553,7 +616,9 @@ export class LiveRoom {
   private async reportRelayUsage() {
     if (!this.joined || this.closed) return;
     let total = 0;
-    for (const peer of this.peers.values()) {
+    const connections = [...this.peers.values()].map((p) => p.pc).concat(this.nativeIn.connections());
+    for (const pc of connections) {
+      const peer = { pc };
       const stats = await peer.pc.getStats().catch(() => null);
       if (!stats) continue;
       const byId = new Map<string, Record<string, unknown>>();
@@ -643,6 +708,7 @@ export class LiveRoom {
     peer.pc.close();
     this.peers.delete(id);
     delete this.remote[id];
+    if (!this.members.includes(id)) this.closeNativeOut((uid) => uid === id);
   }
 
   // Botão "Tentar de novo": se o vídeo já chegou e só a rota caiu, pede uma rota nova; se nunca
@@ -698,7 +764,8 @@ export class LiveRoom {
         id !== this.uid &&
         this.members.includes(id) &&
         !this.failed.has(id) &&
-        !Object.keys(this.remote[id] || {}).length,
+        !Object.keys(this.remote[id] || {}).length &&
+        !this.nativeIn.has(id),
     );
     if (!waiting.length) this.autoResyncs = 0;
     for (const id of Object.keys(this.missingSince)) if (!waiting.includes(id)) delete this.missingSince[id];
@@ -775,7 +842,7 @@ export class LiveRoom {
     if (!announced) this.announced.set(kind, (announced = new MediaStream()));
     // Com a captura já ativa, descobre se dá para codificar pela placa de vídeo (ver hwcodec.ts).
     // A resposta fica guardada: só a primeira live da semana espera o teste (até ~4 s).
-    this.hardware = await hardwareH264();
+    if (!isNativeLive(stream)) this.hardware = await hardwareH264();
     this.locals.set(kind, { stream, announced, bitrate, startedAt: Date.now() });
     this.watchEnded(stream, kind);
     try {
@@ -784,7 +851,9 @@ export class LiveRoom {
       await this.stopBroadcast(kind);
       throw e;
     }
-    for (const id of this.members) if (id !== this.uid) this.syncSenders(this.ensurePeer(id), kind);
+    // Live nativa não usa a conexão do navegador: quem assiste é que procura o motor.
+    if (!isNativeLive(stream))
+      for (const id of this.members) if (id !== this.uid) this.syncSenders(this.ensurePeer(id), kind);
     this.emit();
   }
 
@@ -806,6 +875,8 @@ export class LiveRoom {
     live.paused = false;
     this.watchEnded(stream, kind);
     for (const peer of this.peers.values()) this.syncSenders(peer, kind);
+    // Live nativa: a captura já trocou de fonte no motor; só a prévia antiga é fechada.
+    releaseNativePreview(old);
     old.getTracks().forEach((t) => t.stop());
     this.emit();
   }
@@ -831,6 +902,10 @@ export class LiveRoom {
       if (!live) continue;
       this.locals.delete(k);
       for (const peer of this.peers.values()) this.syncSenders(peer, k);
+      if (isNativeLive(live.stream)) {
+        this.closeNativeOut((_uid, kind) => kind === k);
+        stopNative(live.stream);
+      }
       live.stream.getTracks().forEach((t) => t.stop());
       this.emit();
       await remove(this.path(`streams/${this.uid}/${k}`)).catch(() => {});
@@ -845,6 +920,7 @@ export class LiveRoom {
     this.unsubs.forEach((u) => u());
     this.unsubs = [];
     for (const id of [...this.peers.keys()]) this.closePeer(id);
+    this.nativeIn.closeAll();
     await onDisconnect(this.streamsRef)
       .cancel()
       .catch(() => {});
@@ -861,7 +937,11 @@ export class LiveRoom {
     this.closed = true;
     this.pause?.stop();
     this.unsubs.forEach((u) => u());
-    for (const live of this.locals.values()) live.stream.getTracks().forEach((t) => t.stop());
+    for (const live of this.locals.values()) {
+      if (isNativeLive(live.stream)) stopNative(live.stream);
+      live.stream.getTracks().forEach((t) => t.stop());
+    }
+    this.nativeIn.closeAll();
     for (const peer of this.peers.values()) peer.pc.close();
     this.peers.clear();
   }

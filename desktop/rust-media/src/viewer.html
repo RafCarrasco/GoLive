@@ -5,6 +5,7 @@
   <video id="v" autoplay muted playsinline style="width:100vw;max-height:90vh;background:#000"></video>
   <pre id="s" style="margin:8px">conectando...</pre>
   <script>
+    window.nimboStats = { estado: 'iniciando' };
     (async () => {
       const pc = new RTCPeerConnection();
       pc.addTransceiver('video', { direction: 'recvonly' });
@@ -15,7 +16,17 @@
           ? r()
           : (pc.onicegatheringstatechange = () => pc.iceGatheringState === 'complete' && r()),
       );
-      const res = await fetch('/offer', { method: 'POST', body: JSON.stringify(pc.localDescription) });
+      // Em algumas máquinas o Windows corta conexões locais ao acaso: tenta de novo.
+      let res;
+      for (let i = 0; ; i++) {
+        try {
+          res = await fetch('/offer', { method: 'POST', body: JSON.stringify(pc.localDescription) });
+          break;
+        } catch (e) {
+          if (i >= 4) throw e;
+          await new Promise((r) => setTimeout(r, 300));
+        }
+      }
       await pc.setRemoteDescription(await res.json());
       setInterval(async () => {
         let o = { estado: pc.connectionState };
@@ -34,6 +45,9 @@
         window.nimboStats = o;
         document.getElementById('s').textContent = JSON.stringify(o);
       }, 1000);
-    })();
+    })().catch((e) => {
+      window.nimboStats = { erro: String(e) };
+      document.getElementById('s').textContent = String(e);
+    });
   </script>
 </body>

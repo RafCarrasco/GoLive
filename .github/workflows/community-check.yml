@@ -5,7 +5,7 @@ on:
   pull_request:
     branches: [main]
     # Mudança só em Rust ou em documentação não precisa refazer o site nem os testes de regras.
-    paths-ignore: ['desktop/rust/**', 'desktop/rust-media/**', 'docs/**', '**/*.md']
+    paths-ignore: ['desktop/rust/**', 'desktop/rust-*/**', 'docs/**', '**/*.md']
 permissions:
   contents: read
 # Um push novo cancela a rodada anterior da mesma branch.
