@@ -3,10 +3,10 @@ name: Rust desktop (experimental)
 # o app que o pessoal usa continua sendo o Electron (windows.yml).
 on:
   pull_request:
-    paths: ['desktop/rust/**', '.github/workflows/rust-desktop.yml']
+    paths: ['desktop/rust/**', 'desktop/rust-media/**', '.github/workflows/rust-desktop.yml']
   push:
     branches: [main]
-    paths: ['desktop/rust/**', '.github/workflows/rust-desktop.yml']
+    paths: ['desktop/rust/**', 'desktop/rust-media/**', '.github/workflows/rust-desktop.yml']
   workflow_dispatch:
 permissions:
   contents: read

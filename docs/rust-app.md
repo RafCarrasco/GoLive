@@ -22,6 +22,17 @@ Os 48 quadros/s são o limite da cena de teste, não do capturador. O Rust mante
 **ainda não gasta menos CPU que o Electron**: o codificador usado nesta etapa (MediaTranscoder do
 Windows) converte cor na CPU. Trocar por Media Foundation direto na textura da GPU é parte da etapa 2.
 
+Envio por WebRTC (`nimbo-media serve`, etapas 3 e 4), navegadores assistindo a tela enviada pelo Rust:
+
+| Espectadores | Quadros recebidos por cada um | Pacotes perdidos | CPU do Rust (um núcleo) |
+|---|---|---|---|
+| 1 | 24/s em 960x540 | 0 | ~25% |
+| 4 | 24/s em 960x540 | 0 | ~27% a 32% |
+
+Um codificador só serviu os quatro: o custo quase não cresceu com a plateia. A resolução e os
+quadros estão baixos porque esta versão ainda codifica por software (OpenH264) e copia cada quadro
+da GPU para a memória; a codificação pela placa substitui isso.
+
 Conclusões:
 
 1. Em máquina forte o CPU não é o gargalo; a qualidade por megabit é. O H.264 pela placa de vídeo
@@ -83,8 +94,8 @@ app distribuído até a etapa 7.
 |---|---|---|
 | 1 | Captura nativa de tela/janela | Mede quadros por segundo e CPU capturando 1080p60 |
 | 2 | Codificação H.264 pela placa, uma só | Gera arquivo .h264 que toca; mede ms por quadro |
-| 3 | Envio WebRTC em Rust para 1 navegador | Uma aba do site assiste a tela capturada pelo Rust |
-| 4 | Vários espectadores com 1 codificador | 5 abas assistindo; CPU igual ao de 1 |
+| 3 | Envio WebRTC em Rust para 1 navegador | **Feito** (por software, 960x540): um navegador assiste a tela capturada pelo Rust |
+| 4 | Vários espectadores com 1 codificador | **Feito** com 4 abas; falta repetir com a codificação pela placa |
 | 5 | Casca Tauri com a interface do site + ponte de sinalização | Live de ponta a ponta entre duas contas no emulador |
 | 6 | Paridade: áudio do jogo, seletor, pausa no Alt+Tab, fim da live ao fechar o jogo, login, atualização automática | Lista de testes do app atual passando no app Rust |
 | 7 | Beta lado a lado ("Nimbo Beta") e depois a troca | Amigos usando sem regressão; instalador novo no Release |
