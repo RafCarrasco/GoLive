@@ -3,7 +3,7 @@ name = "nimbo-native"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "Nimbo native helper in Rust: windows, processes and game watch (no audio). Experimental."
+description = "Nimbo native helper in Rust: windows, processes, game watch and the capture picker data (no audio). Experimental."
 
 [lib]
 name = "nimbo_native"
@@ -14,14 +14,27 @@ path = "src/main.rs"
 
 [dependencies]
 windows = { version = "0.62", features = [
+    "Win32_Devices_Display",
     "Win32_Foundation",
     "Win32_Graphics_Dwm",
     "Win32_Graphics_Gdi",
+    "Win32_Graphics_Imaging",
+    "Win32_Storage_Xps",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
     "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Ole",
     "Win32_System_Threading",
+    "Win32_System_Variant",
     "Win32_UI_HiDpi",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_PropertiesSystem",
     "Win32_UI_WindowsAndMessaging",
 ] }
+
+[dev-dependencies]
+# Só nos testes: prova que os índices de `list_monitors` são os mesmos que o motor de mídia usa.
+windows-capture = "2.0.1"
 
 [profile.release]
 opt-level = 3
