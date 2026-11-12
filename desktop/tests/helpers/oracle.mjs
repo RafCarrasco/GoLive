@@ -130,6 +130,7 @@ export async function createOracle(options = {}) {
   const dependencies = {
     electron, child_process: childProcess, crypto: require('node:crypto'), path: require('node:path'), os: require('node:os'),
     http: { createServer(fn) { const server = http.createServer(fn); h.servers.push(server); return server; } },
+    net: require('node:net'),
     fs: { appendFileSync(...args) { h.logs.push(args); }, existsSync: () => true },
     'electron-updater': { autoUpdater: updater },
   };

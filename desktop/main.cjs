@@ -5,6 +5,7 @@ const { app, BrowserWindow, desktopCapturer, dialog, ipcMain, screen, session, s
 const { execFile, spawn } = require('child_process');
 const crypto = require('crypto');
 const http = require('http');
+const net = require('net');
 const path = require('path');
 
 // NIMBO_URL aponta para outro endereço em testes (ex.: http://localhost:5173 com emuladores).
@@ -104,7 +105,13 @@ function signInWithBrowser() {
         if (pendingLogin?.state !== state) return;
         clearTimeout(pendingLogin.timer);
         pendingLogin = null;
-        server.close();
+        // Para de aceitar conexões novas, mas deixa o navegador fechar a dele: o server.close() do
+        // http derruba a conexão na hora, e no Windows isso às vezes descarta a página "Pronto"
+        // (o navegador mostra "conexão redefinida"). O que sobrar aberto cai em 5 s.
+        res.on('finish', () => {
+          net.Server.prototype.close.call(server);
+          setTimeout(() => server.closeAllConnections(), 5000);
+        });
         focusMain();
         if (idToken) resolve({ idToken, accessToken });
         else reject(new Error('O Google não devolveu a credencial. Tente de novo.'));

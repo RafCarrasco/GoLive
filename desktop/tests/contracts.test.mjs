@@ -10,17 +10,21 @@ async function oracle(t, options) {
   t.after(() => host.close());
   return host;
 }
+// One keep-alive agent per request: still a fresh connection every time, but the client closes it.
+// With "Connection: close", Windows often resets loopback sockets before the response is read
+// (ECONNRESET even against a bare Node server), which made these tests flaky there.
 function post(url, body, method = 'POST', pathname = '/callback') {
+  const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
   return new Promise((resolve, reject) => {
-    const req = http.request({ hostname: '127.0.0.1', port: url.searchParams.get('port'), path: pathname, method, agent: false, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }, (res) => {
+    const req = http.request({ hostname: '127.0.0.1', port: url.searchParams.get('port'), path: pathname, method, agent, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }, (res) => {
       let text = '';
       res.setEncoding('utf8');
       res.on('data', (chunk) => { text += chunk; });
       res.on('end', () => resolve({ status: res.statusCode, text, type: res.headers['content-type'] }));
     });
-    req.on('error', reject);
+    req.on('error', (e) => reject(Object.assign(e, { message: `${e.message} (${method} ${pathname} ${body.slice(0, 12)})` })));
     req.end(body);
-  });
+  }).finally(() => agent.destroy());
 }
 async function login(host) {
   const outcome = host.bridge.signIn();
