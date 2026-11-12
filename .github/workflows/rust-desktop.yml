@@ -3,10 +3,10 @@ name: Rust desktop (experimental)
 # o app que o pessoal usa continua sendo o Electron (windows.yml).
 on:
   pull_request:
-    paths: ['desktop/rust/**', 'desktop/rust-media/**', '.github/workflows/rust-desktop.yml']
+    paths: ['desktop/rust/**', 'desktop/rust-media/**', 'desktop/rust-audio/**', 'desktop/rust-native/**', 'desktop/rust-app/**', '.github/workflows/rust-desktop.yml']
   push:
     branches: [main]
-    paths: ['desktop/rust/**', 'desktop/rust-media/**', '.github/workflows/rust-desktop.yml']
+    paths: ['desktop/rust/**', 'desktop/rust-media/**', 'desktop/rust-audio/**', 'desktop/rust-native/**', 'desktop/rust-app/**', '.github/workflows/rust-desktop.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -40,14 +40,19 @@ jobs:
           path: desktop/rust/target/release/nimbo-desktop.exe
           if-no-files-found: error
           retention-days: 7
-  media:
-    # Motor de mídia em Rust (captura + codificação). Só compila e passa lint: medir precisa de tela.
+  crates:
+    # Motor de mídia, áudio do jogo e lista de janelas/vigia do jogo. Medir captura precisa de tela e
+    # som, então aqui só compila, passa lint e roda os testes que não dependem disso.
     runs-on: windows-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: [rust-media, rust-audio, rust-native]
     defaults:
       run:
         shell: pwsh
-        working-directory: desktop/rust-media
+        working-directory: desktop/${{ matrix.crate }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -55,7 +60,7 @@ jobs:
       - run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: desktop/rust-media
+          workspaces: desktop/${{ matrix.crate }}
       - run: cargo fmt --all -- --check
-      - run: cargo clippy --locked --all-targets -- -D warnings
-      - run: cargo build --locked --release
+      - run: cargo clippy --locked --release --all-targets -- -D warnings
+      - run: cargo test --locked --release
