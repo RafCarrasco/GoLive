@@ -3,6 +3,8 @@
 Comunidade privada para transmitir e assistir telas e webcams entre amigos. React + TypeScript + Vite,
 Firebase (Auth Google, Realtime Database, Hosting — plano Spark) e WebRTC P2P.
 
+Para branches, PRs, testes e publicação, veja [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Estrutura
 
 | Caminho | Responsabilidade |
@@ -63,7 +65,7 @@ firebase deploy --project golive-ad118 --only hosting,database
 
 ## Limites conhecidos
 
-- P2P sem TURN: algumas redes (NAT restritivo, redes corporativas) não conectam. A live mostra
-  "Não foi possível conectar" nesses casos.
+- Algumas redes (NAT restritivo, redes corporativas) só conectam por um servidor de retransmissão
+  (TURN), configurado na aba **Rede** do painel. Sem ele, a live mostra "Não foi possível conectar".
 - Cada espectador recebe uma cópia do vídeo: 1080p60 usa até ~6 Mbps de upload por espectador.
 - Áudio de jogos depende do navegador/SO; jogos em tela cheia exclusiva podem não ser capturados.

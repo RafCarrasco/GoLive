@@ -14,7 +14,6 @@ Rust 1.99.1, rustfmt and clippy are pinned by rust-toolchain.toml. Run from the 
 
 The diagnostic executable intentionally exits 2 (RETURN); that is not a media test failure or success. Portable tests exercise origin/navigation, permissions/native-frame/window/generation policy, metadata ownership/replacement/cancel/native-end/reload and bounded frame-credit bookkeeping. No test claims to capture a screen. There is deliberately no ignored "hardware test" that could report success without a capture implementation.
 
-For this coordinator's Linux environment only, the isolated profile HOME differs from the provisioned Rust home. Prefix commands with RUSTUP_HOME=/opt/data/home/.rustup CARGO_HOME=/opt/data/home/.cargo and add /opt/data/home/.cargo/bin to PATH. No global rustup/profile change is needed. Use the Node22 directory in /opt/data/cache/scratch/nimbo-community-node22-bin.txt for the unchanged Node suite/build.
 
 ## Windows source checks vs a real builder
 
@@ -39,7 +38,7 @@ Expected diagnostic behavior (not an observed Windows result): print installed W
 
 ## Commit-bound evidence checklist
 
-Before recording ANY Windows result, include `git rev-parse HEAD`, `git status --short`, `rustc +1.99.1 --version`, Windows edition/build, architecture, WebView2 runtime, builder tool/SDK versions, exact command, exit status and output. Record artifact SHA-256 and bytes; size is informational. No push, workflow dispatch, release or deploy is authorized by these instructions. No new workflow exists.
+Before recording ANY Windows result, include `git rev-parse HEAD`, `git status --short`, `rustc +1.99.1 --version`, Windows edition/build, architecture, WebView2 runtime, builder tool/SDK versions, exact command, exit status and output. Record artifact SHA-256 and bytes; size is informational. CI: `.github/workflows/rust-desktop.yml` runs fmt, clippy, tests and the release build on Windows for every PR that touches `desktop/rust`. It never publishes a release.
 
 Current artifact checklist, all Windows items pending:
 
