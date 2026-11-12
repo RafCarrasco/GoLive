@@ -17,6 +17,7 @@ mod bridge;
 mod login;
 mod media;
 mod selftest;
+mod sources;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -71,13 +72,17 @@ fn main() -> ExitCode {
         }))
         .manage(shell)
         .manage(media::Media::default())
+        .manage(sources::Sources::default())
         .invoke_handler(tauri::generate_handler![
             bridge::sign_in,
             bridge::cancel_sign_in,
             media::media_start,
             media::media_accept,
             media::media_close,
-            media::media_stop
+            media::media_stop,
+            sources::media_sources,
+            sources::media_thumbnail,
+            sources::media_icon
         ])
         .setup(|app| {
             open_main_window(app.handle())?;
@@ -111,7 +116,10 @@ fn open_main_window(app: &AppHandle) -> tauri::Result<()> {
             .permission("allow-media-start")
             .permission("allow-media-accept")
             .permission("allow-media-close")
-            .permission("allow-media-stop"),
+            .permission("allow-media-stop")
+            .permission("allow-media-sources")
+            .permission("allow-media-thumbnail")
+            .permission("allow-media-icon"),
     )?;
 
     let selftest = selftest::requested();

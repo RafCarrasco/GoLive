@@ -8,6 +8,9 @@ fn main() {
         "media_accept",
         "media_close",
         "media_stop",
+        "media_sources",
+        "media_thumbnail",
+        "media_icon",
     ]);
     let attributes = tauri_build::Attributes::new().app_manifest(commands);
     if let Err(e) = tauri_build::try_build(attributes) {

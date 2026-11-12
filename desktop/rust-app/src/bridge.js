@@ -34,6 +34,10 @@
       accept: (offer) => invoke('media_accept', { offer }),
       close: (id) => invoke('media_close', { id }),
       stop: () => invoke('media_stop'),
+      // Seletor "o que compartilhar": lista, miniatura e ícone de cada item.
+      sources: () => invoke('media_sources'),
+      thumbnail: (id) => invoke('media_thumbnail', { id }),
+      icon: (id) => invoke('media_icon', { id }),
     }),
   };
 

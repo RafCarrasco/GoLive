@@ -63,6 +63,16 @@ pub async fn media_start(
         Some(SourceArg::Monitor(index)) => Source::Monitor(index),
         Some(SourceArg::Window(hwnd)) => Source::Window(hwnd),
     };
+    // Janela minimizada não entrega imagem: volta para a tela antes de capturar, como o app antigo.
+    if let Source::Window(hwnd) = source
+        && nimbo_native::window_info(hwnd).is_ok_and(|info| info.minimized)
+    {
+        nimbo_native::restore(hwnd);
+        let _ = tauri::async_runtime::spawn_blocking(|| {
+            std::thread::sleep(std::time::Duration::from_millis(350))
+        })
+        .await;
+    }
     let quality = quality.checked();
     // Criar a captura fala com o Windows e pode demorar: fora da thread da interface.
     let started = tauri::async_runtime::spawn_blocking(move || {
