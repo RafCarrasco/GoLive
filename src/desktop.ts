@@ -20,6 +20,19 @@ type DesktopBridge = {
   onGameState?(id: string, onChange: (active: boolean) => void): () => void;
   // A partir do app 0.4.1: o processo do jogo terminou.
   onGameEnded?(id: string, onEnded: () => void): () => void;
+  // Só no app em Rust: o motor nativo captura, codifica uma vez e envia para todos (live/native.ts).
+  engine?: 'rust';
+  media?: {
+    // source nulo = tela principal. Chamar de novo troca a fonte sem derrubar quem assiste.
+    start(
+      source: { monitor: number } | { window: number } | null,
+      quality: { fps: number; bitrate: number; maxHeight: number },
+    ): Promise<Result<null>>;
+    // Oferta WebRTC de um espectador (JSON) → identificador da conexão e resposta (JSON).
+    accept(offer: string): Promise<Result<{ id: number; answer: string }>>;
+    close(id: number): Promise<void>;
+    stop(): Promise<void>;
+  };
 };
 
 export const desktop = (window as { nimboDesktop?: DesktopBridge }).nimboDesktop;

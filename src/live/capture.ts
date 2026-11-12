@@ -1,4 +1,5 @@
 import { desktop, desktopAudioTrack, watchGameFor } from '../desktop';
+import { captureScreenNative, nativeMedia } from './native';
 
 export type StreamKind = 'screen' | 'camera';
 export type CaptureSurface = 'monitor' | 'window';
@@ -59,6 +60,13 @@ type DisplayOptions = DisplayMediaStreamOptions & {
 
 export async function captureScreen(settings: CaptureSettings): Promise<MediaStream> {
   const wantsAudio = settings.audio !== 'none';
+  // App em Rust: o motor nativo captura e envia; aqui só chega a prévia.
+  if (nativeMedia)
+    return captureScreenNative({
+      fps: settings.frameRate,
+      bitrate: maxBitrate('screen', settings),
+      maxHeight: settings.quality,
+    });
   if (desktop) return captureScreenDesktop(settings, wantsAudio);
   const options: DisplayOptions = {
     video: { ...videoConstraints(settings), displaySurface: settings.surface } as MediaTrackConstraints,

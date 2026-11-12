@@ -40,6 +40,8 @@ use crate::hw::HwEncoder;
 
 /// Piso do controle de banda: abaixo disto a imagem fica ruim demais.
 const MIN_BITRATE: u32 = 800_000;
+/// Sem nenhum pacote do espectador por este tempo, a banda estimada dele deixa de valer.
+const STALE: Duration = Duration::from_secs(2);
 const SOFTWARE_FPS: u32 = 30;
 const SOFTWARE_BITRATE: u32 = 4_000_000;
 /// Servidores STUN: os mesmos do site, para descobrir o endereço público.
@@ -107,7 +109,7 @@ struct Shared {
     encoded: AtomicUsize,
     encoder: Mutex<String>,
     /// Banda estimada de cada espectador, em bits por segundo.
-    estimates: Mutex<HashMap<u64, u64>>,
+    estimates: Mutex<HashMap<u64, (u64, Instant)>>,
     /// Taxa de bits que o codificador está usando agora.
     target: AtomicU32,
     next_id: AtomicU64,
@@ -218,13 +220,16 @@ impl Capture {
         }
         self.checked = Instant::now();
         let ceiling = self.shared.quality.lock().unwrap().bitrate;
+        // Só conta quem respondeu há pouco: conexão que caiu sem avisar para de dar retorno, a
+        // estimativa dela despenca e arrastaria a qualidade de todos até o tempo limite.
         let lowest = self
             .shared
             .estimates
             .lock()
             .unwrap()
             .values()
-            .copied()
+            .filter(|(_, seen)| seen.elapsed() < STALE)
+            .map(|(bps, _)| *bps)
             .min();
         let Some(lowest) = lowest else { return };
         let wanted = ((lowest * 9 / 10).min(u64::from(u32::MAX)) as u32)
@@ -630,11 +635,9 @@ fn viewer(
                     Event::KeyframeRequest(_) => shared.keyframe.store(true, Ordering::Relaxed),
                     // Quanto esta conexão aguenta; o codificador único segue a mais apertada.
                     Event::EgressBitrateEstimate(BweKind::Twcc { estimate, .. }) => {
-                        shared
-                            .estimates
-                            .lock()
-                            .unwrap()
-                            .insert(id, estimate.as_u64());
+                        let mut estimates = shared.estimates.lock().unwrap();
+                        let seen = estimates.get(&id).map_or_else(Instant::now, |e| e.1);
+                        estimates.insert(id, (estimate.as_u64(), seen));
                     }
                     _ => {}
                 }
@@ -675,6 +678,9 @@ fn viewer(
                 }
             }
             Some(Msg::Packet(data, source)) => {
+                if let Some(entry) = shared.estimates.lock().unwrap().get_mut(&id) {
+                    entry.1 = Instant::now();
+                }
                 let receive = Receive {
                     proto: Protocol::Udp,
                     source,
