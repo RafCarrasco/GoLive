@@ -20,6 +20,7 @@ import { useRoomSounds } from './hooks/useRoomSounds';
 import { loadCaptureSettings, saveCaptureSettings, type StreamKind } from './live/capture';
 import { liveKey } from './live/room';
 import { signOutAccount } from './session';
+import { CaptureCancelled } from './lib/errors';
 import { LoadingScreen, LoginScreen, NicknameScreen, PendingScreen } from './components/AuthScreens';
 import { Sidebar } from './components/Sidebar';
 import { UserPanel } from './components/UserPanel';
@@ -171,7 +172,8 @@ function Community({ uid }: { uid: string }) {
       setVisible((ids) => (ids.includes(key) ? ids : [...ids, key]));
       toast.success(kind === 'camera' ? 'Webcam ao vivo' : 'Transmissão iniciada');
     } catch (e) {
-      toast.error(e);
+      // Fechar o seletor do app sem escolher não é erro.
+      if (!(e instanceof CaptureCancelled)) toast.error(e);
     }
   };
 
@@ -181,7 +183,7 @@ function Community({ uid }: { uid: string }) {
       await live.start('screen', capture, true);
       toast.success('Transmissão trocada');
     } catch (e) {
-      toast.error(e);
+      if (!(e instanceof CaptureCancelled)) toast.error(e);
     }
   };
 

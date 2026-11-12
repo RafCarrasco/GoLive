@@ -1,3 +1,11 @@
+// Desistir no seletor do que transmitir (app em Rust). Tem a forma do erro que o getDisplayMedia dá
+// quando a pessoa cancela, mas com tipo próprio: quem chama sabe que não é falha e não mostra aviso.
+export class CaptureCancelled extends DOMException {
+  constructor() {
+    super('Captura cancelada.', 'AbortError');
+  }
+}
+
 // Traduz erros do Firebase e do navegador para mensagens curtas, sem jargão técnico.
 export function errorMessage(e: unknown): string {
   const raw = e instanceof Error ? e.message : String(e);

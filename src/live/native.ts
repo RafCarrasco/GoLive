@@ -7,6 +7,8 @@
 // Quem assiste (site, celular ou app): vê `native: true` no anúncio da live e abre uma conexão
 // própria, só de recepção, direto com o motor do transmissor.
 import { desktop } from '../desktop';
+import { pickNativeSource } from '../components/SourcePicker';
+import { CaptureCancelled } from '../lib/errors';
 import type { Broadcasts } from './room';
 import type { StreamKind } from './capture';
 
@@ -53,7 +55,15 @@ function gathered(pc: RTCPeerConnection, maxMs: number) {
 export async function captureScreenNative(quality: NativeQuality): Promise<MediaStream> {
   const media = nativeMedia;
   if (!media) throw new Error('Disponível só no app.');
-  const started = await media.start(null, quality);
+  // A pessoa escolhe a tela ou janela na própria página. App mais antigo, sem a lista: tela principal.
+  // Fica antes de tudo: desistir aqui não pode mexer numa live que já está no ar (troca de fonte).
+  let source: Parameters<typeof media.start>[0] = null;
+  if (media.sources) {
+    const chosen = await pickNativeSource(media);
+    if (!chosen) throw new CaptureCancelled();
+    source = chosen.source;
+  }
+  const started = await media.start(source, quality);
   if (!started.ok) throw new Error(started.error);
   const pc = new RTCPeerConnection();
   try {
