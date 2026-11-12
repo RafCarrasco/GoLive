@@ -4,23 +4,42 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    # Mudança só em Rust ou em documentação não precisa refazer o site nem os testes de regras.
+    paths-ignore: ['desktop/rust/**', 'desktop/rust-media/**', 'docs/**', '**/*.md']
+permissions:
+  contents: read
+# Um push novo cancela a rodada anterior da mesma branch.
+concurrency:
+  group: community-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: npm
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
-      - run: npm install
+      # O emulador do Realtime Database (~60 MB) fica guardado entre rodadas.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-${{ hashFiles('package-lock.json') }}
+          restore-keys: firebase-emulators-
+      # Electron não é usado no CI: pular o download do binário (~100 MB) economiza a maior parte do npm.
+      - run: npm ci --prefer-offline --no-audit --no-fund
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
       - run: npm run build
       - name: Desktop (Electron) contract tests
         run: npm run test:desktop
       - name: Rules are generated from scripts/build-rules.mjs
         run: npm run rules:build && git diff --exit-code database.rules.json
       - name: Security rules tests (emulator)
-        run: npm install -g firebase-tools@15 && npm run test:rules
+        run: npx --yes firebase-tools@15 emulators:exec --only database --project demo-nimbo "node --test tests/rules.test.mjs"
