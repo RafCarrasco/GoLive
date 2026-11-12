@@ -111,6 +111,8 @@ const rules = {
                 "newData.child('startedAt').isNumber()",
                 "newData.child('streamId').isString()",
                 "newData.child('streamId').val().length <= 100",
+                // Live enviada pelo motor do app (src/live/native.ts).
+                "(!newData.child('native').exists() || newData.child('native').isBoolean())",
               ),
             },
           },
@@ -133,6 +135,10 @@ const rules = {
                 ),
                 '.validate': or(
                   and(
+                    // Sinalização das lives nativas: mesma oferta/resposta, com o tipo da live e um código
+                    // que liga a resposta à oferta.
+                    "(!newData.child('native').exists() || newData.child('native').val() === 'screen' || newData.child('native').val() === 'camera')",
+                    "(!newData.child('nonce').exists() || (newData.child('nonce').isString() && newData.child('nonce').val().length <= 64))",
                     "(newData.child('type').val() === 'offer' || newData.child('type').val() === 'answer')",
                     "newData.child('sdp/type').isString()",
                     "newData.child('sdp/sdp').isString()",

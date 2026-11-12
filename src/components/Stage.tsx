@@ -111,11 +111,17 @@ export function Stage({
     const streamId = live.broadcasts[id]?.[kind]?.streamId;
     const stream = (own ? live.local[kind] : streamId ? live.remote[id]?.[streamId] : undefined) || null;
     // Com as faixas já anunciadas mas a rede ainda negociando, é "conectando", não "sem imagem".
-    const state: TileState = live.failed.includes(id)
-      ? 'failed'
-      : stream && (own || !live.connecting.includes(id))
-        ? 'playing'
-        : 'connecting';
+    // Live enviada pelo motor do app tem conexão própria: o estado vem dela, não da conexão do navegador.
+    const native = own ? undefined : live.native?.[key];
+    const state: TileState = native
+      ? native === 'playing' && !stream
+        ? 'connecting'
+        : native
+      : live.failed.includes(id)
+        ? 'failed'
+        : stream && (own || !live.connecting.includes(id))
+          ? 'playing'
+          : 'connecting';
     const pref = audio[key] || { volume: 100, muted: false };
     return (
       <LiveTile

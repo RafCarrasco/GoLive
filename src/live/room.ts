@@ -71,6 +71,9 @@ export type LiveSnapshot = {
   failed: string[];
   // Participantes cuja conexão P2P ainda está sendo negociada (sem caminho de rede ainda).
   connecting: string[];
+  // Estado de cada live enviada pelo motor do app ("uid:tipo"). Ela tem conexão própria, então não
+  // segue failed/connecting, que são da conexão do navegador com a pessoa.
+  native?: Record<string, 'playing' | 'connecting' | 'failed'>;
 };
 
 export type PeerDiagnostics = {
@@ -249,6 +252,8 @@ export class LiveRoom {
     onChange: () => this.emit(),
   });
   private nativeOut = new Map<string, number>();
+  // Ofertas da mesma pessoa para a mesma live são atendidas uma de cada vez.
+  private nativeQueue = new Map<string, Promise<void>>();
 
   constructor(
     private db: Database,
@@ -278,6 +283,7 @@ export class LiveRoom {
       broadcasts: this.broadcasts,
       local: Object.fromEntries([...this.locals].map(([kind, live]) => [kind, live.stream])),
       remote: this.allRemote(),
+      native: this.nativeIn.states(this.broadcasts, this.uid),
       failed: [...this.failed],
       connecting: [...this.peers.entries()]
         .filter(([, p]) => p.pc.connectionState !== 'connected' && p.pc.connectionState !== 'failed')
@@ -327,9 +333,13 @@ export class LiveRoom {
   private async registerPresence(reset = false) {
     // Depois de uma queda os outros recriam as conexões com a gente; as antigas daqui não servem mais.
     if (reset) for (const id of [...this.peers.keys()]) this.closePeer(id);
+    // As conexões com motores nativos também: as ofertas feitas durante a queda se perderam, e sem
+    // isto quem assiste ficaria sem tentar de novo até a live recomeçar.
+    if (reset) this.nativeIn.reset();
     await onDisconnect(this.memberRef).remove();
     await set(this.memberRef, { joinedAt: serverTimestamp() });
     this.sessionStart = Date.now();
+    if (reset) this.nativeIn.sync(this.broadcasts, this.members, this.uid);
     for (const kind of this.locals.keys()) await this.publishStream(kind);
   }
 
@@ -459,16 +469,35 @@ export class LiveRoom {
   }
 
   // Oferta de quem quer assistir a nossa live nativa, ou resposta do motor de quem assistimos.
-  private async handleNative(sender: string, msg: NativeSignal) {
-    if (msg.type === 'answer') return this.nativeIn.onAnswer(sender, msg.native, msg.sdp);
-    const live = this.locals.get(msg.native);
-    if (!live || !isNativeLive(live.stream)) return;
+  private handleNative(sender: string, msg: NativeSignal): Promise<void> {
+    if (msg.type === 'answer') return this.nativeIn.onAnswer(sender, msg.native, msg.sdp, msg.nonce);
     const key = sender + ':' + msg.native;
+    const run = (this.nativeQueue.get(key) ?? Promise.resolve()).catch(() => {}).then(() => this.answerOffer(sender, msg, key));
+    this.nativeQueue.set(key, run);
+    return run.finally(() => {
+      if (this.nativeQueue.get(key) === run) this.nativeQueue.delete(key);
+    });
+  }
+
+  private async answerOffer(sender: string, msg: NativeSignal, key: string) {
+    const native = () => {
+      const live = this.locals.get(msg.native);
+      return Boolean(live && isNativeLive(live.stream) && this.members.includes(sender));
+    };
+    if (!native()) return;
     const previous = this.nativeOut.get(key);
-    if (previous !== undefined) void nativeMedia?.close(previous);
+    if (previous !== undefined) {
+      this.nativeOut.delete(key);
+      void nativeMedia?.close(previous)?.catch(() => {});
+    }
     const { id, answer } = await answerNative(msg.sdp);
+    // A live pode ter acabado (ou a pessoa saído) enquanto o motor respondia.
+    if (!native()) {
+      void nativeMedia?.close(id)?.catch(() => {});
+      return;
+    }
     this.nativeOut.set(key, id);
-    await this.send(sender, { type: 'answer', sdp: answer, native: msg.native });
+    await this.send(sender, { type: 'answer', sdp: answer, native: msg.native, nonce: msg.nonce });
   }
 
   // Fecha no motor as conexões de quem nos assistia (um participante, um tipo de live, ou todos).
@@ -477,7 +506,7 @@ export class LiveRoom {
       const i = key.lastIndexOf(':');
       if (!match(key.slice(0, i), key.slice(i + 1))) continue;
       this.nativeOut.delete(key);
-      void nativeMedia?.close(id);
+      void nativeMedia?.close(id)?.catch(() => {});
     }
   }
 
@@ -714,6 +743,14 @@ export class LiveRoom {
   // Botão "Tentar de novo": se o vídeo já chegou e só a rota caiu, pede uma rota nova; se nunca
   // chegou, reconecta do zero.
   retry(id: string) {
+    // Lives enviadas pelo motor do app têm conexão própria: refaz essas primeiro.
+    this.nativeIn.reset(id);
+    this.nativeIn.sync(this.broadcasts, this.members, this.uid);
+    const lives = Object.values(this.broadcasts[id] || {});
+    if (lives.length && lives.every((live) => live?.native)) {
+      this.emit();
+      return;
+    }
     const peer = this.peers.get(id);
     this.failed.delete(id);
     if (peer && Object.keys(this.remote[id] || {}).length) {
@@ -765,7 +802,9 @@ export class LiveRoom {
         this.members.includes(id) &&
         !this.failed.has(id) &&
         !Object.keys(this.remote[id] || {}).length &&
-        !this.nativeIn.has(id),
+        // Refazer as conexões do navegador não ajuda uma live nativa (ela tem as próprias tentativas)
+        // e faria piscar as outras lives do canal.
+        Object.values(this.broadcasts[id] || {}).some((live) => live && !live.native),
     );
     if (!waiting.length) this.autoResyncs = 0;
     for (const id of Object.keys(this.missingSince)) if (!waiting.includes(id)) delete this.missingSince[id];
@@ -836,8 +875,12 @@ export class LiveRoom {
     );
   }
 
-  async startBroadcast(stream: MediaStream, kind: StreamKind, bitrate: number) {
-    if (this.locals.has(kind)) await this.stopBroadcast(kind);
+  async startBroadcast(stream: MediaStream, kind: StreamKind, bitrate: number): Promise<void> {
+    const running = this.locals.get(kind);
+    // De uma live nativa para outra, a captura nova já está no motor: parar a antiga derrubaria as duas.
+    if (running && isNativeLive(running.stream) && isNativeLive(stream))
+      return this.replaceSource(kind, stream, bitrate);
+    if (running) await this.stopBroadcast(kind);
     let announced = this.announced.get(kind);
     if (!announced) this.announced.set(kind, (announced = new MediaStream()));
     // Com a captura já ativa, descobre se dá para codificar pela placa de vídeo (ver hwcodec.ts).
@@ -866,7 +909,7 @@ export class LiveRoom {
 
   // Troca a fonte (outra tela ou janela) sem encerrar a live: só a faixa enviada muda, então quem
   // assiste continua no mesmo player, sem renegociar o vídeo.
-  async replaceSource(kind: StreamKind, stream: MediaStream, bitrate: number) {
+  async replaceSource(kind: StreamKind, stream: MediaStream, bitrate: number): Promise<void> {
     const live = this.locals.get(kind);
     if (!live) return this.startBroadcast(stream, kind, bitrate);
     const old = live.stream;

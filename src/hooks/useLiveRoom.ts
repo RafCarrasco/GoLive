@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { gameWatchOf } from '../desktop';
 import { db, useEmulators } from '../firebase';
 import { LiveRoom, testTurn, type LiveSnapshot } from '../live/room';
+import { isNativeLive, stopNative } from '../live/native';
 import {
   captureCamera,
   captureScreen,
@@ -100,6 +101,8 @@ export function useLiveRoom(uid: string, handlers: Handlers) {
             ? await captureCamera(settings)
             : await captureScreen(settings);
       if (current.current !== room) {
+        // Saiu do canal enquanto a captura abria: no app em Rust é preciso parar o motor também.
+        if (isNativeLive(stream)) stopNative(stream);
         stream.getTracks().forEach((t) => t.stop());
         return;
       }
