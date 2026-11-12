@@ -6,7 +6,6 @@
 //!   nimbo-media serve   [porta]               envia a tela por WebRTC para navegadores
 //!   nimbo-media hw [s] [largura] [altura] [fps] codifica pela placa direto na GPU e mede
 
-mod hw;
 mod hwbench;
 mod serve;
 
@@ -25,7 +24,7 @@ use windows_capture::settings::{
     MinimumUpdateIntervalSettings, SecondaryWindowSettings, Settings,
 };
 
-pub(crate) type AnyError = Box<dyn std::error::Error + Send + Sync>;
+pub(crate) use nimbo_media::{AnyError, hw, process_cpu};
 
 struct Job {
     seconds: u64,
@@ -43,33 +42,6 @@ struct Capture {
     frames: u64,
     /// Tempo gasto dentro do envio ao codificador, para o custo por quadro.
     encode_time: Duration,
-}
-
-/// Tempo de CPU (usuário + núcleo) que este processo já gastou.
-pub(crate) fn process_cpu() -> Duration {
-    use windows::Win32::Foundation::FILETIME;
-    use windows::Win32::System::Threading::{GetCurrentProcess, GetProcessTimes};
-    let (mut created, mut exited, mut kernel, mut user) = (
-        FILETIME::default(),
-        FILETIME::default(),
-        FILETIME::default(),
-        FILETIME::default(),
-    );
-    // SAFETY: os quatro ponteiros apontam para variáveis locais válidas durante a chamada.
-    let ok = unsafe {
-        GetProcessTimes(
-            GetCurrentProcess(),
-            &mut created,
-            &mut exited,
-            &mut kernel,
-            &mut user,
-        )
-    };
-    if ok.is_err() {
-        return Duration::ZERO;
-    }
-    let ticks = |t: FILETIME| (u64::from(t.dwHighDateTime) << 32) | u64::from(t.dwLowDateTime);
-    Duration::from_nanos((ticks(kernel) + ticks(user)) * 100)
 }
 
 impl GraphicsCaptureApiHandler for Capture {
