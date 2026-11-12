@@ -8,6 +8,9 @@ description = "Nimbo native media engine (capture, encode, send). Experimental."
 [dependencies]
 windows-capture = "2.0.1"
 windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Threading"] }
+str0m = { version = "0.25", default-features = false, features = ["aws-lc-rs"] }
+openh264 = "0.9"
+serde_json = "1"
 
 [profile.release]
 opt-level = 3
