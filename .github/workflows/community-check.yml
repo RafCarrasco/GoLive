@@ -1,7 +1,7 @@
 name: Community validation
 on:
   push:
-    branches: ['feat/community-foundation', 'feat/private-community-live-experience']
+    branches: [main]
   pull_request:
     branches: [main]
 jobs:
@@ -18,6 +18,8 @@ jobs:
           java-version: '21'
       - run: npm install
       - run: npm run build
+      - name: Desktop (Electron) contract tests
+        run: npm run test:desktop
       - name: Rules are generated from scripts/build-rules.mjs
         run: npm run rules:build && git diff --exit-code database.rules.json
       - name: Security rules tests (emulator)

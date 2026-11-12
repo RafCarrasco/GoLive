@@ -1,0 +1,20 @@
+[package]
+name = "nimbo-desktop"
+version = "0.4.1"
+edition = "2024"
+rust-version = "1.99"
+publish = false
+description = "Checkpoint-2 Nimbo native policy and Windows API feasibility probe; not a shipping shell"
+
+[dependencies]
+url = "=2.5.8"
+
+[target.'cfg(windows)'.dependencies]
+webview2-com = "=0.39.1"
+windows = { version = "=0.62.2", features = ["Win32_UI_Shell", "Win32_System_Com"] }
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+all = "deny"
