@@ -209,10 +209,10 @@ fn rects(hwnd: HWND) -> Result<(Rect, Rect), Error> {
 /// Enquanto existir, esta thread enxerga janelas e monitores em pixels físicos. Sem isso, num
 /// processo que não declara DPI, o Windows devolve medidas escaladas e a conta de tela cheia erra.
 /// É por thread (e desfeito no fim) para não mudar o processo de quem usa a biblioteca.
-struct PhysicalPixels(DPI_AWARENESS_CONTEXT);
+pub(crate) struct PhysicalPixels(DPI_AWARENESS_CONTEXT);
 
 impl PhysicalPixels {
-    fn enter() -> Self {
+    pub(crate) fn enter() -> Self {
         // SAFETY: só troca o contexto de DPI desta thread; devolve o anterior (nulo se falhar).
         Self(unsafe { SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) })
     }

@@ -7,17 +7,32 @@
 // Quem assiste (site, celular ou app): vê `native: true` no anúncio da live e abre uma conexão
 // própria, só de recepção, direto com o motor do transmissor.
 import { desktop } from '../desktop';
+import { pickNativeSource } from '../components/SourcePicker';
+import { CaptureCancelled } from '../lib/errors';
 import type { Broadcasts } from './room';
 import type { StreamKind } from './capture';
 
 export type NativeQuality = { fps: number; bitrate: number; maxHeight: number };
-export type NativeSignal = { type: 'offer' | 'answer'; sdp: RTCSessionDescriptionInit; native: StreamKind };
+// nonce: liga a resposta à oferta que a pediu. Sem isso, com duas ofertas pendentes (nova tentativa),
+// a resposta da primeira seria aplicada na conexão da segunda e ela nunca conectaria.
+export type NativeSignal = {
+  type: 'offer' | 'answer';
+  sdp: RTCSessionDescriptionInit;
+  native: StreamKind;
+  nonce?: string;
+};
 
 // Só existe no app em Rust; no navegador e no app antigo fica indefinido.
 export const nativeMedia = desktop?.media;
 
 // Prévia local de cada live nativa: é uma conexão de espectador com o próprio motor.
 const previews = new WeakMap<MediaStream, { pc: RTCPeerConnection; id: number }>();
+// Quantas prévias estão abertas: uma troca de fonte que falha não pode derrubar a live que já está no ar.
+let activePreviews = 0;
+// Chamadas ao app que não podem virar erro solto no console se o app recusar.
+const quiet = (call: Promise<unknown> | undefined) => void call?.catch(() => {});
+// A página recarregou com uma live no ar: a captura antiga ficaria rodando no app sem ninguém para pará-la.
+quiet(nativeMedia?.stop());
 export const isNativeLive = (stream: MediaStream) => previews.has(stream);
 
 // Espera os endereços de rede serem levantados, com teto: a oferta vai inteira numa mensagem só.
@@ -40,7 +55,15 @@ function gathered(pc: RTCPeerConnection, maxMs: number) {
 export async function captureScreenNative(quality: NativeQuality): Promise<MediaStream> {
   const media = nativeMedia;
   if (!media) throw new Error('Disponível só no app.');
-  const started = await media.start(null, quality);
+  // A pessoa escolhe a tela ou janela na própria página. App mais antigo, sem a lista: tela principal.
+  // Fica antes de tudo: desistir aqui não pode mexer numa live que já está no ar (troca de fonte).
+  let source: Parameters<typeof media.start>[0] = null;
+  if (media.sources) {
+    const chosen = await pickNativeSource(media);
+    if (!chosen) throw new CaptureCancelled();
+    source = chosen.source;
+  }
+  const started = await media.start(source, quality);
   if (!started.ok) throw new Error(started.error);
   const pc = new RTCPeerConnection();
   try {
@@ -59,10 +82,11 @@ export async function captureScreenNative(quality: NativeQuality): Promise<Media
     await pc.setRemoteDescription(JSON.parse(answer.value.answer) as RTCSessionDescriptionInit);
     const stream = new MediaStream([await track]);
     previews.set(stream, { pc, id: answer.value.id });
+    activePreviews++;
     return stream;
   } catch (e) {
     pc.close();
-    void media.stop();
+    if (!activePreviews) quiet(media.stop());
     throw e;
   }
 }
@@ -72,13 +96,14 @@ export function releaseNativePreview(stream: MediaStream) {
   const preview = previews.get(stream);
   if (!preview) return;
   previews.delete(stream);
+  activePreviews--;
   preview.pc.close();
-  void nativeMedia?.close(preview.id);
+  quiet(nativeMedia?.close(preview.id));
 }
 
 export function stopNative(stream: MediaStream) {
   releaseNativePreview(stream);
-  void nativeMedia?.stop();
+  quiet(nativeMedia?.stop());
 }
 
 // Entrega ao motor a oferta de um espectador e devolve a resposta para mandar de volta.
@@ -96,8 +121,12 @@ type Incoming = {
   kind: StreamKind;
   streamId: string;
   stream: MediaStream;
+  nonce: string;
+  // Falhas seguidas desta live; volta a zero quando conecta.
   tries: number;
   timer: ReturnType<typeof setTimeout>;
+  // Espera depois de "desconectado" antes de refazer a conexão.
+  lost?: ReturnType<typeof setTimeout>;
 };
 
 type Deps = {
@@ -109,6 +138,8 @@ type Deps = {
 
 const TRIES = 3;
 const CONNECT_MS = 12000;
+// O motor encerra a conexão do lado dele sem aviso; o navegador só marca "falhou" bem depois.
+const LOST_MS = 5000;
 
 // Lado de quem assiste: uma conexão só de recepção para cada live nativa do canal.
 export class NativeReceiver {
@@ -141,14 +172,17 @@ export class NativeReceiver {
     const stream = new MediaStream();
     const retry = () => {
       if (this.conns.get(key)?.pc !== pc) return;
+      const failures = conn.tries + 1;
       this.close(key);
-      if (tries + 1 < TRIES) this.open(key, live, tries + 1);
+      if (failures < TRIES) this.open(key, live, failures);
       else {
         this.gaveUp.add(`${key}|${live.streamId}`);
         console.warn('[nimbo] live do app não conectou', live.uid.slice(0, 5));
+        this.deps.onChange();
       }
     };
-    const conn: Incoming = { pc, ...live, stream, tries, timer: setTimeout(retry, CONNECT_MS) };
+    const nonce = crypto.randomUUID();
+    const conn: Incoming = { pc, ...live, stream, nonce, tries, timer: setTimeout(retry, CONNECT_MS) };
     this.conns.set(key, conn);
     pc.addTransceiver('video', { direction: 'recvonly' });
     pc.ontrack = ({ track }) => {
@@ -157,14 +191,20 @@ export class NativeReceiver {
       this.deps.onChange();
     };
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'connected') clearTimeout(conn.timer);
-      else if (pc.connectionState === 'failed') retry();
+      clearTimeout(conn.lost);
+      if (pc.connectionState === 'connected') {
+        clearTimeout(conn.timer);
+        // Conectou: falhas antigas não contam mais (três quedas espalhadas em horas não são desistência).
+        conn.tries = 0;
+      } else if (pc.connectionState === 'failed') retry();
+      else if (pc.connectionState === 'disconnected') conn.lost = setTimeout(retry, LOST_MS);
+      this.deps.onChange();
     };
     void (async () => {
       await pc.setLocalDescription();
       await gathered(pc, 2000);
       if (this.conns.get(key)?.pc !== pc || !pc.localDescription) return;
-      await this.deps.send(live.uid, { type: 'offer', sdp: pc.localDescription.toJSON(), native: live.kind });
+      await this.deps.send(live.uid, { type: 'offer', sdp: pc.localDescription.toJSON(), native: live.kind, nonce });
     })().catch((e) => {
       console.warn('[nimbo] oferta para o app', e);
       retry();
@@ -172,9 +212,10 @@ export class NativeReceiver {
   }
 
   // Resposta do motor do transmissor à nossa oferta.
-  async onAnswer(uid: string, kind: StreamKind, sdp: RTCSessionDescriptionInit) {
+  async onAnswer(uid: string, kind: StreamKind, sdp: RTCSessionDescriptionInit, nonce?: string) {
     const conn = this.conns.get(`${uid}:${kind}`);
-    if (!conn || conn.pc.signalingState !== 'have-local-offer') return;
+    // Só vale a resposta à oferta desta conexão (ver nonce em NativeSignal).
+    if (!conn || conn.nonce !== nonce || conn.pc.signalingState !== 'have-local-offer') return;
     await conn.pc.setRemoteDescription(sdp);
   }
 
@@ -191,6 +232,32 @@ export class NativeReceiver {
     return false;
   }
 
+  // Como está cada live nativa, para o player: tocando, conectando ou sem conseguir conectar.
+  states(broadcasts: Broadcasts, self: string) {
+    const out: Record<string, 'playing' | 'connecting' | 'failed'> = {};
+    for (const [uid, kinds] of Object.entries(broadcasts)) {
+      if (uid === self) continue;
+      for (const [kind, live] of Object.entries(kinds)) {
+        if (!live?.native) continue;
+        const key = `${uid}:${kind}`;
+        const conn = this.conns.get(key);
+        out[key] = this.gaveUp.has(`${key}|${live.streamId}`)
+          ? 'failed'
+          : conn && conn.pc.connectionState === 'connected' && conn.stream.getTracks().length
+            ? 'playing'
+            : 'connecting';
+      }
+    }
+    return out;
+  }
+
+  // "Tentar de novo" ou volta da rede: esquece as desistências e refaz as conexões dessa pessoa
+  // (ou de todos). Quem chama faz o sync em seguida.
+  reset(uid?: string) {
+    for (const [key, conn] of [...this.conns]) if (!uid || conn.uid === uid) this.close(key);
+    for (const key of [...this.gaveUp]) if (!uid || key.startsWith(uid + ':')) this.gaveUp.delete(key);
+  }
+
   // Para a conta de uso do servidor de retransmissão.
   connections() {
     return [...this.conns.values()].map((c) => c.pc);
@@ -200,6 +267,7 @@ export class NativeReceiver {
     const conn = this.conns.get(key);
     if (!conn) return;
     clearTimeout(conn.timer);
+    clearTimeout(conn.lost);
     this.conns.delete(key);
     conn.pc.onconnectionstatechange = null;
     conn.pc.close();

@@ -1,7 +1,7 @@
 //! JSON escrito à mão, byte a byte igual ao do C#: o Electron lê uma linha por item, e a
 //! comparação entre os dois programas é por texto.
 
-use crate::{ProcessInfo, Rect, WindowGeometry, WindowInfo};
+use crate::{MonitorInfo, PickerSource, ProcessInfo, Rect, WindowGeometry, WindowInfo};
 
 /// Mesmo escape do `Json()` do C#: só aspas, barra invertida e caracteres de controle.
 pub(crate) fn string(value: &str) -> String {
@@ -71,9 +71,86 @@ impl WindowGeometry {
     }
 }
 
+impl MonitorInfo {
+    /// Uma linha do modo `monitors` (sem a quebra de linha).
+    pub fn to_json(&self) -> String {
+        format!(
+            "{{\"index\":{},\"device\":{},\"name\":{},\"primary\":{},\"rect\":{}}}",
+            self.index,
+            string(&self.device),
+            string(&self.name),
+            self.primary,
+            self.rect.to_json(),
+        )
+    }
+}
+
+impl PickerSource {
+    /// Uma linha do modo `sources` (sem a quebra de linha). O `hwnd` vai como texto, como no modo
+    /// `list`: é um número de 64 bits, que o JavaScript não guarda inteiro.
+    pub fn to_json(&self) -> String {
+        format!(
+            "{{\"id\":{},\"kind\":\"{}\",\"title\":{},\"exe\":{},\"path\":{},\"hwnd\":\"{}\",\
+             \"pid\":{},\"monitor\":{},\"minimized\":{},\"fullscreen\":{},\"game\":{}}}",
+            string(&self.id),
+            self.kind.as_str(),
+            string(&self.title),
+            string(&self.exe),
+            string(&self.path),
+            self.hwnd,
+            self.pid,
+            self.monitor,
+            self.minimized,
+            self.fullscreen,
+            self.game,
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::SourceKind;
+
+    #[test]
+    fn monitor_and_source_lines() {
+        let monitor = MonitorInfo {
+            index: 2,
+            device: r"\\.\DISPLAY2".into(),
+            name: "DELL U2720Q".into(),
+            rect: Rect {
+                left: -2560,
+                top: 0,
+                right: 0,
+                bottom: 1440,
+            },
+            primary: false,
+        };
+        assert_eq!(
+            monitor.to_json(),
+            "{\"index\":2,\"device\":\"\\\\\\\\.\\\\DISPLAY2\",\"name\":\"DELL U2720Q\",\
+             \"primary\":false,\"rect\":{\"left\":-2560,\"top\":0,\"right\":0,\"bottom\":1440}}"
+        );
+        let source = PickerSource {
+            id: "window:132456".into(),
+            kind: SourceKind::Window,
+            title: "Jogo \"novo\"".into(),
+            exe: "jogo.exe".into(),
+            path: r"C:\Jogos\jogo.exe".into(),
+            hwnd: 132456,
+            pid: 4321,
+            monitor: 0,
+            minimized: true,
+            fullscreen: false,
+            game: true,
+        };
+        assert_eq!(
+            source.to_json(),
+            "{\"id\":\"window:132456\",\"kind\":\"window\",\"title\":\"Jogo \\\"novo\\\"\",\
+             \"exe\":\"jogo.exe\",\"path\":\"C:\\\\Jogos\\\\jogo.exe\",\"hwnd\":\"132456\",\
+             \"pid\":4321,\"monitor\":0,\"minimized\":true,\"fullscreen\":false,\"game\":true}"
+        );
+    }
 
     #[test]
     fn escapes_like_the_csharp_helper() {

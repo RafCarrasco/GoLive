@@ -387,6 +387,21 @@ describe('sinalização WebRTC', () => {
     );
     await assertFails(set(ref(member(), 'rooms/geral/signals/owner/member/m3'), offer));
   });
+  test('live enviada pelo motor do app: campos extras aceitos só no formato certo', async () => {
+    const signal = (extra) => ({ ...offer, ...extra });
+    const to = (id) => ref(member(), 'rooms/geral/signals/owner/member/' + id);
+    await assertSucceeds(set(to('n1'), signal({ native: 'screen', nonce: 'a'.repeat(36) })));
+    await assertSucceeds(set(to('n2'), signal({ native: 'camera' })));
+    await assertFails(set(to('n3'), signal({ native: 'outro' })));
+    await assertFails(set(to('n4'), signal({ native: true })));
+    await assertFails(set(to('n5'), signal({ native: 'screen', nonce: 'a'.repeat(65) })));
+    await assertFails(set(to('n6'), signal({ native: 'screen', nonce: 1 })));
+    const live = { startedAt: 1, streamId: 'abc' };
+    await assertSucceeds(set(ref(member(), 'rooms/geral/streams/member/screen'), { ...live, native: true }));
+    await assertFails(set(ref(member(), 'rooms/geral/streams/member/screen'), { ...live, native: 'sim' }));
+    // Ninguém marca a live dos outros como nativa.
+    await assertFails(set(ref(member(), 'rooms/geral/streams/owner/screen'), { ...live, native: true }));
+  });
   test('destinatário limpa a própria caixa em lote', async () => {
     await assertFails(update(ref(member(), 'rooms/geral'), { 'signals/owner/member/m1': null }));
     await assertSucceeds(update(ref(owner(), 'rooms/geral'), { 'signals/owner/member/m1': null }));

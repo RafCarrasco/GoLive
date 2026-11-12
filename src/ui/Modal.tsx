@@ -8,6 +8,7 @@ export function Modal({
   children,
   footer,
   size = 'md',
+  className = '',
 }: {
   title: string;
   kicker?: string;
@@ -15,6 +16,7 @@ export function Modal({
   children: ReactNode;
   footer?: ReactNode;
   size?: 'sm' | 'md';
+  className?: string;
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -23,7 +25,12 @@ export function Modal({
   }, [onClose]);
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <section className={'modal modal-' + size} role="dialog" aria-modal="true" aria-label={title}>
+      <section
+        className={`modal modal-${size} ${className}`.trimEnd()}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+      >
         <header className="modal-header">
           <div>
             {kicker && <span className="kicker">{kicker}</span>}

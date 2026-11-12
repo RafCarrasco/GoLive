@@ -1,5 +1,24 @@
 // Ponte com o app Nimbo para Windows (desktop/preload.cjs). No navegador `desktop` é undefined.
-type Result<T> = { ok: true; value: T } | { ok: false; error: string };
+export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
+
+// Uma tela ou janela que o app em Rust consegue transmitir (seletor em components/SourcePicker.tsx).
+export type NativeSource = {
+  // Opaco; não muda enquanto o seletor está aberto.
+  id: string;
+  kind: 'screen' | 'window';
+  // "Tela 1" ou o título da janela.
+  title: string;
+  // Nome do executável sem extensão; vazio para telas.
+  app: string;
+  minimized: boolean;
+  fullscreen: boolean;
+  // Parece um jogo: aparece primeiro na lista.
+  game: boolean;
+  // O que entregar ao media.start.
+  source: { monitor: number } | { window: number };
+  // Processo dono da janela, para o áudio do jogo.
+  pid?: number;
+};
 
 type DesktopBridge = {
   version: number;
@@ -32,8 +51,14 @@ type DesktopBridge = {
     accept(offer: string): Promise<Result<{ id: number; answer: string }>>;
     close(id: number): Promise<void>;
     stop(): Promise<void>;
+    // Seletor do que transmitir. Sem `sources` (app mais antigo) a live usa a tela principal.
+    sources?(): Promise<Result<NativeSource[]>>;
+    // Imagens em data URL, pedidas uma a uma. Miniatura nula = não deu para capturar (minimizada etc.).
+    thumbnail?(id: string): Promise<Result<string | null>>;
+    icon?(id: string): Promise<Result<string | null>>;
   };
 };
+export type NativeMedia = NonNullable<DesktopBridge['media']>;
 
 export const desktop = (window as { nimboDesktop?: DesktopBridge }).nimboDesktop;
 

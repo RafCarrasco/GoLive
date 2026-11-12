@@ -48,7 +48,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        crate: [rust-media, rust-audio, rust-native]
+        crate: [rust-media, rust-audio, rust-native, rust-app]
     defaults:
       run:
         shell: pwsh
